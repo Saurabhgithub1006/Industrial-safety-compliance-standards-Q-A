@@ -98,24 +98,31 @@ Industrial-safety-compliance-standards-Q-A/
 │   │   ├── parser_osha_ecfr.py            # eCFR-XML -> clause tree parser
 │   │   ├── store.py                       # SQLite persistence
 │   │   └── run_ingest.py                  # CLI: python -m safety_qa.ingestion.run_ingest
-│   └── retrieval/                         # Phase 2: hybrid retrieval (done)
-│       ├── chunking.py                    # Clause -> retrievable Chunk
-│       ├── bm25.py                        # hand-rolled Okapi BM25 (lexical leg)
-│       ├── stemming.py                    # zero-dependency Porter stemmer
-│       ├── semantic.py                    # TF-IDF + LSA (semantic leg, no API needed)
-│       ├── hybrid.py                      # reciprocal rank fusion
-│       ├── retriever.py                   # Retriever: ties both legs together
-│       ├── eval_set.py                    # golden question -> clause set + recall@k
-│       └── run_eval.py                    # CLI: python -m safety_qa.retrieval.run_eval
+│   ├── retrieval/                         # Phase 2: hybrid retrieval (done)
+│   │   ├── chunking.py                    # Clause -> retrievable Chunk
+│   │   ├── bm25.py                        # hand-rolled Okapi BM25 (lexical leg)
+│   │   ├── stemming.py                    # zero-dependency Porter stemmer
+│   │   ├── semantic.py                    # TF-IDF + LSA (semantic leg, no API needed)
+│   │   ├── hybrid.py                      # reciprocal rank fusion
+│   │   ├── retriever.py                   # Retriever: ties both legs together
+│   │   ├── eval_set.py                    # golden question -> clause set + recall@k
+│   │   ├── run_eval.py                    # CLI: python -m safety_qa.retrieval.run_eval
+│   │   └── ask.py                         # CLI: inspect raw retrieval for any question
+│   └── generation/                        # Phase 3: grounded generation (done)
+│       ├── schema.py                      # Pydantic: Claim / Citation / GeneratedAnswer
+│       ├── llm_client.py                  # LLMClient protocol: AnthropicClient + FakeLLMClient
+│       ├── prompt.py                      # system + user prompt construction
+│       ├── generator.py                   # retrieve -> prompt -> validate -> claims
+│       └── ask.py                         # CLI: python -m safety_qa.generation.ask (needs ANTHROPIC_API_KEY)
 └── tests/
     ├── test_ingestion.py
-    └── test_retrieval.py
+    ├── test_retrieval.py
+    └── test_generation.py
 ```
 
-Generation, judges, HITL UI, and the broader eval harness land under this structure
-per the phase plan in
-[`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md) — that
-document is the source of truth for what gets built in what order.
+Judges, HITL UI, and the broader eval harness land under this structure per the phase
+plan in [`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md)
+— that document is the source of truth for what gets built in what order.
 
 **Status:**
 - **Phase 1** (clause-aware ingestion) — done. 135 clauses of 29 CFR 1910.147 parsed
@@ -132,5 +139,21 @@ document is the source of truth for what gets built in what order.
   title-field boosting would close this gap; not chased further here to avoid
   overfitting a 15-item eval set.
   Run: `PYTHONPATH=src python -m safety_qa.retrieval.run_eval`
+  Inspect raw retrieval for any question: `PYTHONPATH=src python -m safety_qa.retrieval.ask "your question"`
+- **Phase 3** (grounded generation) — done. First phase that calls an actual LLM
+  (Claude, via structured tool-use output). The generator only sees retrieved
+  clauses (no open-book knowledge) and must emit discrete, independently-checkable
+  claims — each with a citation and a verbatim quote — or explicitly flag anything
+  the corpus doesn't cover in `unsupported_aspects`, instead of guessing. Every claim
+  is then re-checked deterministically before being trusted: cited clause must
+  actually be among what was retrieved (catches hallucinated citations), and the
+  quote must be an exact substring of that clause's text (catches paraphrasing
+  disguised as quoting) — anything that fails either check is dropped into
+  `rejected_claims` with a reason, never silently shown as an answer. This is a
+  cheap sanity floor, not a replacement for Phase 4's semantic grounding judge.
+  All 9 tests run against a fake, deterministic LLM client — no network call, no API
+  key needed for CI.
+  Real usage needs `export ANTHROPIC_API_KEY=...`, then:
+  `PYTHONPATH=src python -m safety_qa.generation.ask "your question"`
 
-Tested throughout: `pytest` (36 tests, all passing).
+Tested throughout: `pytest` (45 tests, all passing, zero requiring live API access).
