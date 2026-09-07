@@ -88,6 +88,19 @@ def get_clause(conn: sqlite3.Connection, citation_key: str) -> Clause | None:
     return _row_to_clause(row) if row else None
 
 
+def get_clause_by_path(conn: sqlite3.Connection, standard_id: str, clause_path: str) -> Clause | None:
+    """Resolve a clause by its (standard_id, clause_path) pair -- the form a
+    generated claim's citation actually carries (display path, not the internal
+    citation_key). Used by Judge 1 (Phase 4) to independently re-fetch a cited
+    clause straight from the corpus, deliberately not reusing whatever chunk object
+    the generator already had -- an independent lookup is the whole point of a
+    grounding check that "must not just trust the generator's framing."""
+    row = conn.execute(
+        "SELECT * FROM clause WHERE standard_id = ? AND clause_path = ?", (standard_id, clause_path)
+    ).fetchone()
+    return _row_to_clause(row) if row else None
+
+
 def list_clauses(conn: sqlite3.Connection, standard_id: str) -> list[Clause]:
     rows = conn.execute(
         "SELECT * FROM clause WHERE standard_id = ? ORDER BY order_index", (standard_id,)

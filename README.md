@@ -108,21 +108,29 @@ Industrial-safety-compliance-standards-Q-A/
 │   │   ├── eval_set.py                    # golden question -> clause set + recall@k
 │   │   ├── run_eval.py                    # CLI: python -m safety_qa.retrieval.run_eval
 │   │   └── ask.py                         # CLI: inspect raw retrieval for any question
-│   └── generation/                        # Phase 3: grounded generation (done)
-│       ├── schema.py                      # Pydantic: Claim / Citation / GeneratedAnswer
-│       ├── llm_client.py                  # LLMClient protocol: AnthropicClient + FakeLLMClient
-│       ├── prompt.py                      # system + user prompt construction
-│       ├── generator.py                   # retrieve -> prompt -> validate -> claims
-│       └── ask.py                         # CLI: python -m safety_qa.generation.ask (needs ANTHROPIC_API_KEY)
+│   ├── generation/                        # Phase 3: grounded generation (done)
+│   │   ├── schema.py                      # Pydantic: Claim / Citation / GeneratedAnswer
+│   │   ├── llm_client.py                  # LLMClient protocol: AnthropicClient + FakeLLMClient
+│   │   ├── prompt.py                      # system + user prompt construction
+│   │   ├── generator.py                   # retrieve -> prompt -> validate -> claims
+│   │   └── ask.py                         # CLI: python -m safety_qa.generation.ask (needs ANTHROPIC_API_KEY)
+│   └── judging/                           # Phase 4: Judge 1, grounding & contradiction (done)
+│       ├── schema.py                      # Pydantic: ClaimVerdict / GroundingJudgeOutput
+│       ├── prompt.py                      # independent judge system + user prompt
+│       ├── grounding_judge.py             # deterministic re-check + batched semantic LLM judgment
+│       ├── eval_set.py                    # adversarial claims (hallucinated citations, altered quotes, contradictions)
+│       └── run_judge_eval.py              # CLI: python -m safety_qa.judging.run_judge_eval (needs ANTHROPIC_API_KEY)
 └── tests/
     ├── test_ingestion.py
     ├── test_retrieval.py
-    └── test_generation.py
+    ├── test_generation.py
+    └── test_judging.py
 ```
 
-Judges, HITL UI, and the broader eval harness land under this structure per the phase
-plan in [`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md)
-— that document is the source of truth for what gets built in what order.
+Judge 2, HITL UI, and the broader feedback/regression harness land under this
+structure per the phase plan in
+[`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md) — that
+document is the source of truth for what gets built in what order.
 
 **Status:**
 - **Phase 1** (clause-aware ingestion) — done. 135 clauses of 29 CFR 1910.147 parsed
@@ -155,5 +163,23 @@ plan in [`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadm
   key needed for CI.
   Real usage needs `export ANTHROPIC_API_KEY=...`, then:
   `PYTHONPATH=src python -m safety_qa.generation.ask "your question"`
+- **Phase 4** (Judge 1 — Grounding & Contradiction) — done. Two layers, matching the
+  arch doc exactly: (1) an independent deterministic re-check — every claim's cited
+  clause is re-fetched straight from the corpus by its own DB lookup (never reusing
+  Phase 3's chunk objects) and its quote re-verified verbatim from scratch; a claim
+  failing this is `unsupported` with zero LLM calls. (2) everything that clears step 1
+  goes into one **batched** LLM call (cost-conscious per the arch doc's Sec 4.4 note)
+  asking the question string-matching can't: does the clause actually *entail* the
+  claim, or does the claim misrepresent/contradict it (e.g. clause says "at least
+  annually", claim says "monthly" — verbatim-valid quote, wrong claim).
+  All 10 tests cover the deterministic layer and the LLM-layer plumbing (batching,
+  claim_id-based response mapping, retry-once-then-fail) against a fake client — zero
+  API key needed for CI. What genuinely can't be tested without a live model: whether
+  the judge actually *catches* a contradiction. For that, `judging/eval_set.py` has a
+  9-case adversarial set (correct claims, contradicted claims, hallucinated citations,
+  altered quotes) with expected verdicts; run it against a real model with
+  `export ANTHROPIC_API_KEY=...` then `PYTHONPATH=src python -m safety_qa.judging.run_judge_eval`
+  for a precision/recall report — this one isn't CI-enforced the way Phase 2's recall@k
+  is, since there's no dependency-free way to check semantic judgment quality.
 
-Tested throughout: `pytest` (45 tests, all passing, zero requiring live API access).
+Tested throughout: `pytest` (55 tests, all passing, zero requiring live API access).
