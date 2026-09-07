@@ -92,23 +92,45 @@ Industrial-safety-compliance-standards-Q-A/
 │   ├── raw/                               # unmodified source documents + SOURCES.md provenance
 │   └── processed/                         # generated (SQLite corpus.db) -- gitignored, rebuild with run_ingest
 ├── src/safety_qa/
-│   └── ingestion/                         # Phase 1: clause-aware parsing + storage (done)
-│       ├── canonical.py                   # citation_key normalization
-│       ├── models.py                      # Standard / Clause data model
-│       ├── parser_osha_ecfr.py            # eCFR-XML -> clause tree parser
-│       ├── store.py                       # SQLite persistence
-│       └── run_ingest.py                  # CLI: python -m safety_qa.ingestion.run_ingest
+│   ├── ingestion/                         # Phase 1: clause-aware parsing + storage (done)
+│   │   ├── canonical.py                   # citation_key normalization
+│   │   ├── models.py                      # Standard / Clause data model
+│   │   ├── parser_osha_ecfr.py            # eCFR-XML -> clause tree parser
+│   │   ├── store.py                       # SQLite persistence
+│   │   └── run_ingest.py                  # CLI: python -m safety_qa.ingestion.run_ingest
+│   └── retrieval/                         # Phase 2: hybrid retrieval (done)
+│       ├── chunking.py                    # Clause -> retrievable Chunk
+│       ├── bm25.py                        # hand-rolled Okapi BM25 (lexical leg)
+│       ├── stemming.py                    # zero-dependency Porter stemmer
+│       ├── semantic.py                    # TF-IDF + LSA (semantic leg, no API needed)
+│       ├── hybrid.py                      # reciprocal rank fusion
+│       ├── retriever.py                   # Retriever: ties both legs together
+│       ├── eval_set.py                    # golden question -> clause set + recall@k
+│       └── run_eval.py                    # CLI: python -m safety_qa.retrieval.run_eval
 └── tests/
-    └── test_ingestion.py
+    ├── test_ingestion.py
+    └── test_retrieval.py
 ```
 
-Retrieval, generation, judges, HITL UI, and the eval harness land under this
-structure per the phase plan in
+Generation, judges, HITL UI, and the broader eval harness land under this structure
+per the phase plan in
 [`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md) — that
 document is the source of truth for what gets built in what order.
 
-**Status:** Phase 1 (clause-aware ingestion) is done — 135 clauses of 29 CFR 1910.147
-parsed from raw eCFR XML into a queryable SQLite store, each independently addressable
-by a canonical citation key (`OSHA-1910.147#(c)(4)(i)`), with notes/appendix content
-correctly marked non-normative. Run it: `PYTHONPATH=src python -m safety_qa.ingestion.run_ingest`,
-tested: `pytest`.
+**Status:**
+- **Phase 1** (clause-aware ingestion) — done. 135 clauses of 29 CFR 1910.147 parsed
+  from raw eCFR XML into a queryable SQLite store, each independently addressable by a
+  canonical citation key (`OSHA-1910.147#(c)(4)(i)`), with notes/appendix content
+  correctly marked non-normative.
+  Run: `PYTHONPATH=src python -m safety_qa.ingestion.run_ingest`
+- **Phase 2** (hybrid retrieval) — done. BM25 (hand-rolled, stemmed) + TF-IDF/LSA
+  fused via reciprocal rank fusion, no embedding API required. **recall@5 = 93.3%**
+  on a 15-question golden set, clearing the roadmap's ≥90% exit criterion, enforced as
+  a test (a regression below threshold fails CI). One known limitation: definitions
+  that get cross-referenced by several *other* definitions can lose to those
+  definitions on pure lexical frequency — a real neural embedding model or
+  title-field boosting would close this gap; not chased further here to avoid
+  overfitting a 15-item eval set.
+  Run: `PYTHONPATH=src python -m safety_qa.retrieval.run_eval`
+
+Tested throughout: `pytest` (36 tests, all passing).
