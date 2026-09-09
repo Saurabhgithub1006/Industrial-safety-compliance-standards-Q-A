@@ -1,11 +1,12 @@
 """Ask a question and get a grounded, citation-checked answer (Phase 3).
 
-    export ANTHROPIC_API_KEY=sk-...
     PYTHONPATH=src python -m safety_qa.generation.ask "what is a lockout device?"
 
-Requires ANTHROPIC_API_KEY -- this is the first phase in the project that actually
-calls an LLM. Everything before this point (ingestion, retrieval) is deterministic
-code with no API dependency; this is where that changes.
+Requires a real LLM API key in .env -- this is the first phase in the project that
+actually calls an LLM. Everything before this point (ingestion, retrieval) is
+deterministic code with no API dependency; this is where that changes. Provider
+defaults to Kimi (set LLM_PROVIDER=anthropic in .env to use Claude instead) -- see
+llm_client.build_client().
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from safety_qa.retrieval.eval_set import STANDARD_ID
 from safety_qa.retrieval.retriever import Retriever
 
 from .generator import GenerationError, Generator, GenerationResult
-from .llm_client import AnthropicClient
+from .llm_client import build_client
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_DB_PATH = str(_REPO_ROOT / "data" / "processed" / "corpus.db")
@@ -56,7 +57,7 @@ def run(db_path: str = _DEFAULT_DB_PATH) -> None:
 
     conn = connect(db_path)
     retriever = Retriever.from_db(conn, STANDARD_ID)
-    generator = Generator(retriever, AnthropicClient())
+    generator = Generator(retriever, build_client("generator"))
 
     try:
         result = generator.answer(query)
