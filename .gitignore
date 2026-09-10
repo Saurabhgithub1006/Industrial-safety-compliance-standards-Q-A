@@ -6,3 +6,12 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# secrets -- never commit
+.env
+.env.*
+!.env.example
+
+# editor-local history (VS Code local-history extension) -- can contain
+# timestamped snapshots of .env; never commit
+.history/

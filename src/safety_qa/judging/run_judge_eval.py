@@ -1,19 +1,20 @@
 """Phase 4 CLI: run the adversarial eval set against a live Judge 1 and report
 precision/recall/accuracy per verdict class.
 
-    export ANTHROPIC_API_KEY=sk-...
     PYTHONPATH=src python -m safety_qa.judging.run_judge_eval
 
-Needs ANTHROPIC_API_KEY and the ingested corpus (data/processed/corpus.db) -- see
-eval_set.py for why this can't be a pure-Python/CI-enforced check the way Phase 2's
-recall@k was.
+Needs a real LLM API key in .env and the ingested corpus (data/processed/corpus.db)
+-- see eval_set.py for why this can't be a pure-Python/CI-enforced check the way
+Phase 2's recall@k was. Provider defaults to Kimi (small/fast tier: kimi-k2.6) --
+set LLM_PROVIDER=anthropic in .env to use Claude Haiku instead; see
+llm_client.build_client().
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from safety_qa.generation.llm_client import AnthropicClient
+from safety_qa.generation.llm_client import build_client
 from safety_qa.ingestion.store import connect
 
 from .eval_set import ADVERSARIAL_SET, precision_recall
@@ -22,14 +23,10 @@ from .grounding_judge import GroundingJudge
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_DB_PATH = str(_REPO_ROOT / "data" / "processed" / "corpus.db")
 
-# Small/fast tier per the arch doc's model-tiering guidance (Sec 6.1) -- Judge 1 is
-# a bounded entailment check, closer to NLI than open-ended reasoning.
-_JUDGE_MODEL = "claude-haiku-4-5-20251001"
-
 
 def run(db_path: str = _DEFAULT_DB_PATH) -> None:
     conn = connect(db_path)
-    judge = GroundingJudge(conn, AnthropicClient(model=_JUDGE_MODEL))
+    judge = GroundingJudge(conn, build_client("judge"))
 
     claims = [case.claim for case in ADVERSARIAL_SET]
     judged = judge.evaluate_claims(claims)
