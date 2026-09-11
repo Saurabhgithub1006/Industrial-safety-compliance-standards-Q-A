@@ -117,3 +117,26 @@
 **Validation:** Phase 3 real run: 1 question → 2 correctly grounded, cited claims. Phase 4 real run: 9/9 adversarial cases correct, 100% accuracy across all three verdict classes. 55 pre-existing tests re-run and confirmed unaffected (all use `FakeLLMClient`).
 
 **Follow-ups:** Kimi account is rate-limited to 3 requests/minute on the current tier — noted as an operational constraint for future real-API runs, not addressed further. The Kimi key's value was incidentally exposed to the assistant's session context via an IDE file-diff notification when the user edited `.env` directly (never committed, never requested) — user was advised rotation is a reasonable precaution if being maximally cautious; not required, no action taken.
+
+---
+
+## CHG-20260911-06 — 2026-09-11
+
+**Issue:** User asked why hybrid retrieval used TF-IDF instead of a real embedding model (naming e5-base-v2 / jina specifically), after the semantic-leg design was explained. Not a bug report — a design question that surfaced a decision worth revisiting.
+
+**Root cause:** N/A in the defect sense — this is a design-tradeoff change, not a fix. The original TF-IDF/LSA choice (CHG-20260907-02) was based on an assumption (real embeddings = heavy install or API cost) that was checked directly during this change and found no longer accurate for this environment: `torch` (CUDA build) and `transformers` were already installed, and a GPU (RTX 5060 Laptop) was available — verified via direct `import torch; torch.cuda.is_available()` check before proposing the change, not assumed.
+
+**Impact:** Retrieval quality measurably improved: recall@5 went from 93.3% to 100% on the golden eval set. No regression — all 55 tests still pass (one updated for the new constructor signature).
+
+**Fix implemented:** Replaced `semantic.py`'s TF-IDF + truncated SVD internals with `intfloat/e5-base-v2` sentence embeddings via `sentence-transformers`, keeping the exact same `fit`/`score_all` interface so no other file needed to change. Model loading cached process-wide via `lru_cache` rather than per-instance, to avoid reloading a ~440MB model repeatedly (verified: full test suite completed in ~15s, one model load for the whole run).
+
+**Decisions made:**
+- D1: Proceed with the e5-base-v2 swap now, before Phase 5, rather than after — recommended by agent ("so Phase 5's HITL review is working with the better-quality retrieval"), confirmed by user ("start then").
+- D2: e5-base-v2 over jina-embeddings as the specific model — recommended by agent (simpler asymmetric-prefix convention, well-benchmarked, context length not a binding constraint at this corpus's scale); user did not specify a preference, agent's recommendation was taken by proceeding.
+- D3: Drop `scikit-learn` from dependencies as part of the same change, since nothing else in the codebase used it — treated as a direct, minimal-diff consequence of the approved plan rather than a separate decision point.
+
+**Alternatives rejected:** jina-embeddings-v2/v3 — not rejected outright, offered as an explicit alternative; e5-base-v2 was recommended and the user proceeded without countering it.
+
+**Validation:** `run_eval.py` re-run for real: recall@5 = 100% (15/15), up from 93.3%. Full test suite re-run: 55/55 passing. Manual sanity check before the full eval: a 3-document toy corpus correctly ranked the semantically matching document highest (0.898) over two unrelated ones (0.665, 0.717).
+
+**Follow-ups:** First run of `semantic.py` on a machine without the model cached will download ~440MB from Hugging Face — not an issue in this environment (already cached now) but worth knowing if this repo is cloned fresh elsewhere. `artifacts/system-arch-and-roadmap.md`'s tech-stack section already described "dense embeddings" generically and did not need updating; only `README.md`'s Phase 2 status section referenced TF-IDF/LSA specifically and was updated.
