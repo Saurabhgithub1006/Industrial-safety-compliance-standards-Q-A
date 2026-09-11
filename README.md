@@ -102,7 +102,7 @@ Industrial-safety-compliance-standards-Q-A/
 │   │   ├── chunking.py                    # Clause -> retrievable Chunk
 │   │   ├── bm25.py                        # hand-rolled Okapi BM25 (lexical leg)
 │   │   ├── stemming.py                    # zero-dependency Porter stemmer
-│   │   ├── semantic.py                    # TF-IDF + LSA (semantic leg, no API needed)
+│   │   ├── semantic.py                    # e5-base-v2 neural embeddings (semantic leg, local, no API)
 │   │   ├── hybrid.py                      # reciprocal rank fusion
 │   │   ├── retriever.py                   # Retriever: ties both legs together
 │   │   ├── eval_set.py                    # golden question -> clause set + recall@k
@@ -138,14 +138,16 @@ document is the source of truth for what gets built in what order.
   canonical citation key (`OSHA-1910.147#(c)(4)(i)`), with notes/appendix content
   correctly marked non-normative.
   Run: `PYTHONPATH=src python -m safety_qa.ingestion.run_ingest`
-- **Phase 2** (hybrid retrieval) — done. BM25 (hand-rolled, stemmed) + TF-IDF/LSA
-  fused via reciprocal rank fusion, no embedding API required. **recall@5 = 93.3%**
-  on a 15-question golden set, clearing the roadmap's ≥90% exit criterion, enforced as
-  a test (a regression below threshold fails CI). One known limitation: definitions
-  that get cross-referenced by several *other* definitions can lose to those
-  definitions on pure lexical frequency — a real neural embedding model or
-  title-field boosting would close this gap; not chased further here to avoid
-  overfitting a 15-item eval set.
+- **Phase 2** (hybrid retrieval) — done. BM25 (hand-rolled, stemmed) + **e5-base-v2**
+  neural sentence embeddings (local, via `sentence-transformers` — no API key,
+  runs on GPU if available) fused via reciprocal rank fusion. **recall@5 = 100%**
+  (15/15) on the golden set, up from 93.3% under the original TF-IDF/LSA semantic
+  leg — that earlier choice was made when a real embedding model looked like it'd
+  need either an API key or a heavy install; once torch/transformers turned out to
+  already be present with GPU support, the trade-off no longer held, so the leg was
+  swapped (see CHG-20260911-06 in `artifacts/changelogs.md`). The one previously
+  documented limitation (a definition losing to other definitions that
+  cross-reference it, on pure lexical frequency) is resolved under real embeddings.
   Run: `PYTHONPATH=src python -m safety_qa.retrieval.run_eval`
   Inspect raw retrieval for any question: `PYTHONPATH=src python -m safety_qa.retrieval.ask "your question"`
 - **Phase 3** (grounded generation) — done. First phase that calls an actual LLM

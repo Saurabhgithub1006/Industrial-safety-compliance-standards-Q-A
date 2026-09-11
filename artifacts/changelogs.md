@@ -64,3 +64,17 @@
 **Result:** Phase 3 generation, run for real: a real question produced 2 correctly grounded, cited claims, both passing verification. Phase 4's adversarial eval, run for real: 9/9 correct, 100% accuracy across all three verdict classes (supported/contradicted/unsupported) — including the hardest category, a verbatim-valid quote that still misrepresents the clause. 55 existing tests unaffected (all run against `FakeLLMClient`). Separately, `.gitignore` was extended to exclude `.history/` (a VS Code local-history extension found holding timestamped snapshots of `.env`) after discovering it during this change — confirmed via full git history search that neither it nor `.env` was ever committed.
 
 **Files:** `src/safety_qa/generation/llm_client.py`, `ask.py`, `src/safety_qa/judging/run_judge_eval.py`, `pyproject.toml`, `.gitignore`, `.env.example`
+
+---
+
+## CHG-20260911-06 — Swap TF-IDF/LSA semantic leg for e5-base-v2 embeddings — 2026-09-11
+
+**What:** Replaced the semantic leg of hybrid retrieval with real neural embeddings (`intfloat/e5-base-v2`, local via `sentence-transformers`), superseding the TF-IDF + truncated SVD approach from CHG-20260907-02.
+
+**How it works:** `semantic.py` now encodes each chunk's `index_text` with e5-base-v2 (asymmetric convention: `"passage: "` prefix for indexed documents, `"query: "` prefix for queries, per the model card), L2-normalized at encode time so cosine similarity is a plain dot product. The loaded model is cached process-wide via `lru_cache`, not per `SemanticIndex` instance, so every `Retriever`/test in the same process shares one loaded model rather than each reloading a ~440MB model separately. `fit`/`score_all` kept the exact same interface, so `retriever.py` and `hybrid.py` needed zero changes. `scikit-learn` was dropped from dependencies (nothing else in the codebase used it).
+
+**Why now, having chosen TF-IDF/LSA originally:** that earlier choice was driven by real embeddings appearing to need either an API key or a heavy local install (torch + transformers, ~1-2GB) — a trade-off the user explicitly declined to pay for a demo-stage decision at the time. That reasoning stopped holding once it was checked directly: torch (CUDA build) and transformers were already present in this environment, and a real GPU (RTX 5060 Laptop) was available — making the actual incremental cost just the `sentence-transformers` wrapper package, not the trade-off originally assumed.
+
+**Result:** recall@5 = 100% (15/15), up from 93.3% (14/15). The one previously-documented known limitation (the "energy isolating device" definition losing to other definitions that cross-reference it, on pure lexical frequency) no longer reproduces — real embeddings resolve exactly the class of miss that was attributed to TF-IDF's lexical-frequency dependence. 55 tests passing (one updated: `test_semantic_index_scores_are_finite_and_bounded` dropped the now-nonexistent `n_components` parameter).
+
+**Files:** `src/safety_qa/retrieval/semantic.py`, `pyproject.toml`, `tests/test_retrieval.py`, `README.md`

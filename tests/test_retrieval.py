@@ -83,7 +83,7 @@ def test_bm25_empty_corpus_does_not_crash():
 # ---------------------------------------------------------------------------
 
 def test_semantic_index_scores_are_finite_and_bounded():
-    idx = SemanticIndex(n_components=2)
+    idx = SemanticIndex()
     idx.fit(["lockout devices must be durable", "employees receive training", "tagout warns of hazards"])
     scores = idx.score_all("durable lockout devices")
     assert len(scores) == 3
