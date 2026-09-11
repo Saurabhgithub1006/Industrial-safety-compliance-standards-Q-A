@@ -30,6 +30,7 @@ class EscalationPacket:
     quote: str
     judge1_verdict: str
     judge1_reasoning: str
+    judge1_source: str  # "deterministic_check" or "llm_judge" -- see JudgedClaim.source
     severity: int
 
 
@@ -47,6 +48,7 @@ def build_packets(judged: JudgedAnswer) -> list[EscalationPacket]:
             quote=jc.claim.citation.quote,
             judge1_verdict=jc.verdict,
             judge1_reasoning=jc.reasoning,
+            judge1_source=jc.source,
             severity=_SEVERITY_RANK.get(jc.verdict, 0),
         )
         for jc in judged.escalated_claims

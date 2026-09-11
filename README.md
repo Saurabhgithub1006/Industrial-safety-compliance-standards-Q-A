@@ -120,22 +120,24 @@ Industrial-safety-compliance-standards-Q-A/
 │       ├── grounding_judge.py             # deterministic re-check + batched semantic LLM judgment
 │       ├── eval_set.py                    # adversarial claims (hallucinated citations, altered quotes, contradictions)
 │       └── run_judge_eval.py              # CLI: python -m safety_qa.judging.run_judge_eval (needs ANTHROPIC_API_KEY)
-│   └── review/                            # Phase 5: Judge 2 + HITL review (done)
+│   └── review/                            # Phase 5+6: Judge 2 + HITL + feedback loop (done)
 │       ├── escalation.py                  # Judge 2: severity-ranked escalation packets (no LLM)
 │       ├── store.py                       # persistent review queue (separate DB from corpus.db)
 │       ├── assembly.py                    # final answer = supported + HITL-cleared claims
 │       ├── cli.py                         # CLI: python -m safety_qa.review.cli (work the queue)
-│       └── pipeline.py                    # CLI: python -m safety_qa.review.pipeline "question" (full loop)
+│       ├── pipeline.py                    # CLI: python -m safety_qa.review.pipeline "question" (full loop)
+│       ├── regression.py                  # overturned-case extraction + judge-override-rate metric
+│       └── run_regression.py              # CLI: python -m safety_qa.review.run_regression (needs ANTHROPIC_API_KEY)
 └── tests/
     ├── test_ingestion.py
     ├── test_retrieval.py
     ├── test_generation.py
     ├── test_judging.py
-    └── test_review.py
+    ├── test_review.py
+    └── test_regression.py
 ```
 
-The broader feedback/regression harness (Phase 6) and hardening (Phase 7) land
-under this structure per the phase plan in
+Hardening (Phase 7) lands under this structure per the phase plan in
 [`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md) — that
 document is the source of truth for what gets built in what order.
 
@@ -208,5 +210,28 @@ document is the source of truth for what gets built in what order.
   phase at all).
   Full loop: `PYTHONPATH=src python -m safety_qa.review.pipeline "your question"`
   Work the queue: `PYTHONPATH=src python -m safety_qa.review.cli`
+- **Phase 6** (feedback & regression harness) — done. `review/regression.py`
+  extracts every case where a human overturned Judge 1 (approved or edited a
+  claim Judge 1 had flagged) and computes the judge-override rate — how often a
+  human disagreed with Judge 1, the real-world precision metric. `run_regression.py`
+  replays each overturned case through a fresh Judge 1 call to catch prompt
+  drift ("this exact claim must not come back wrongly flagged"), but **only**
+  for cases Judge 1's own LLM judgment originally caught — a case caught by the
+  deterministic layer (hallucinated citation, non-verbatim quote) is a pure
+  string/lookup check that will reproduce identically forever unless the corpus
+  itself changes, so replaying it through a model tests nothing and would just
+  spend an API call for no signal. This distinction (`judge1_source` on every
+  review item) was added mid-build after running real data through the system
+  and finding the first version of the replay logic would have mislabeled a
+  deterministic catch as a "regression."
+  Seeded with real (not synthetic) review history to build this against:
+  3 organic real questions produced zero escalations — a real, honest signal
+  Judge 1 was already precise — so 3 deliberately-wrong claims were run through
+  the live pipeline instead; 2 were genuinely correct catches (confirmed via
+  reject), 1 was a genuine transcription error in the quote (fixed via edit) —
+  giving a real override rate of 33% (1/3) to validate the harness against.
+  6 new tests, all deterministic (the pure extraction/metric logic; the live
+  replay is validated manually, same honest limitation as Phase 4's eval).
+  Run: `PYTHONPATH=src python -m safety_qa.review.run_regression`
 
-Tested throughout: `pytest` (71 tests, all passing, zero requiring live API access).
+Tested throughout: `pytest` (77 tests, all passing, zero requiring live API access).

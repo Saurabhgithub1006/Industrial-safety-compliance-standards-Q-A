@@ -165,3 +165,27 @@
 **Validation:** 16 new tests (71 total), all passing, zero LLM dependency for this phase. Live end-to-end smoke test: a real Kimi Judge 1 call correctly verdicted a deliberately wrong claim ("monthly" vs. the clause's actual "at least annually") as `contradicted`; Judge 2 built the escalation packet against the real corpus; the claim was correctly excluded from the final answer both before review (`pending_count=1`) and after a simulated reject decision (`rejected_count=1`), using a throwaway queue database, not the real one.
 
 **Follow-ups:** No automated test exercises the interactive `input()`-driven loop in `cli.py` itself (only its underlying `apply_decision` function) — acceptable given the project's existing convention (other CLIs like `generation/ask.py` aren't loop-tested either), but worth knowing if the CLI's prompt-handling logic grows more complex later. Phase 6 (feedback/regression harness) is expected to consume `review_decision` rows as its labeled dataset — not built yet.
+
+---
+
+## CHG-20260911-08 — 2026-09-11
+
+**Issue:** Begin Phase 6 of the roadmap: turn Phase 5's `review_decision` history into a regression suite and a judge-precision metric. Real review history was needed to build against (D1 from the Phase 6 kickoff, Option A) but the real queue was empty.
+
+**Root cause:** A real defect surfaced during this change, not assumed upfront: the first version of `run_regression.py`'s replay logic treated every overturned case identically, replaying it through a live Judge 1 call and labeling a still-flagged result `REGRESSION`. Running it against real seeded data (see Impact) showed this mislabels a case that was originally caught by the deterministic verbatim-quote check, not Judge 1's own LLM judgment -- that check is a pure string/lookup comparison that will reproduce the identical result on every replay unless the underlying corpus text changes, so "replaying" it establishes nothing about drift and the `REGRESSION` label actively misrepresents what happened.
+
+**Impact:** Before the fix, a genuinely fine transcription-error correction (see below) would have been reported as a "regression" on every future run of `run_regression.py`, permanently and misleadingly, until the item was resolved out of the queue -- a false-alarm risk for whoever reads that report. Caught here, before merge, rather than after.
+
+**Fix implemented:** Added `judge1_source` ("deterministic_check" or "llm_judge") to `EscalationPacket` and the `review_item` table (with a migration, since the real `review_queue.db` file already existed under the old schema from CHG-20260911-07's seeding and `CREATE TABLE IF NOT EXISTS` doesn't retroactively add columns to it). `run_regression.py` now only replays `llm_judge`-sourced cases through the model; deterministic-sourced ones are listed separately with an explicit note that they were not replayed and why.
+
+**Decisions made:**
+- D1 (carried from Phase 0 intake): build the harness against real review history rather than pure fixtures — user chose Option A.
+- D2: when 3 organic real questions produced zero escalations, deliberately inject known-wrong claims through the real pipeline (same transparent technique as CHG-20260911-07) rather than keep trying organic questions indefinitely or fabricate review_decision rows directly — recommended by agent, consistent with the precedent already set and disclosed in CHG-20260911-07; not contested (no live turn-taking needed, proceeding was implicit in the approved plan).
+- D3: use a schema migration (`ALTER TABLE ADD COLUMN`) rather than deleting and recreating the already-existing `review_queue.db` file — recommended by agent specifically to avoid a destructive action on an existing database file without asking, even though the file only held the agent's own just-created seed data; not contested.
+- D4: the one row whose `judge1_source` the migration's default value got wrong (seed3, defaulted to `llm_judge` but was actually `deterministic_check`) was corrected via a direct `UPDATE` rather than left inaccurate, since the true value was known from the earlier live call's actual output — agent action, not escalated as it was a direct factual correction, not a judgment call.
+
+**Alternatives rejected:** Skipping the real-data seeding and building purely against synthetic fixtures (Option B from the Phase 0 intake) — not chosen; Option A was.
+
+**Validation:** 6 new tests (77 total) covering `overturned_cases()`/`override_rate()` against synthetic data, all passing. Live validation against the real, corrected queue: `run_regression.py` reports override rate 33.3% (1/3), correctly identifies the one overturned case as deterministic-sourced, explicitly declines to replay it, and reports "no LLM-judged overturned cases to replay" (accurate — neither genuine rejection was overturned).
+
+**Follow-ups:** No genuine `llm_judge`-sourced overturned case exists yet in the real queue (both live LLM-caught flags were confirmed correct via reject, not overturned) -- the replay-and-detect-regression code path is validated by the pure unit tests and by direct reasoning about its logic, but has not yet been exercised end-to-end against a real case that should show `ok` after a genuine judge misfire. This will happen naturally once real usage produces one.
