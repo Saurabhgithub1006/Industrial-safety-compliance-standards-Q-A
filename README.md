@@ -120,15 +120,22 @@ Industrial-safety-compliance-standards-Q-A/
 │       ├── grounding_judge.py             # deterministic re-check + batched semantic LLM judgment
 │       ├── eval_set.py                    # adversarial claims (hallucinated citations, altered quotes, contradictions)
 │       └── run_judge_eval.py              # CLI: python -m safety_qa.judging.run_judge_eval (needs ANTHROPIC_API_KEY)
+│   └── review/                            # Phase 5: Judge 2 + HITL review (done)
+│       ├── escalation.py                  # Judge 2: severity-ranked escalation packets (no LLM)
+│       ├── store.py                       # persistent review queue (separate DB from corpus.db)
+│       ├── assembly.py                    # final answer = supported + HITL-cleared claims
+│       ├── cli.py                         # CLI: python -m safety_qa.review.cli (work the queue)
+│       └── pipeline.py                    # CLI: python -m safety_qa.review.pipeline "question" (full loop)
 └── tests/
     ├── test_ingestion.py
     ├── test_retrieval.py
     ├── test_generation.py
-    └── test_judging.py
+    ├── test_judging.py
+    └── test_review.py
 ```
 
-Judge 2, HITL UI, and the broader feedback/regression harness land under this
-structure per the phase plan in
+The broader feedback/regression harness (Phase 6) and hardening (Phase 7) land
+under this structure per the phase plan in
 [`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md) — that
 document is the source of truth for what gets built in what order.
 
@@ -183,5 +190,23 @@ document is the source of truth for what gets built in what order.
   `export ANTHROPIC_API_KEY=...` then `PYTHONPATH=src python -m safety_qa.judging.run_judge_eval`
   for a precision/recall report — this one isn't CI-enforced the way Phase 2's recall@k
   is, since there's no dependency-free way to check semantic judgment quality.
+- **Phase 5** (Judge 2 — Escalation + HITL review) — done. Judge 2 makes zero LLM
+  calls (a deliberate choice): severity-ranking (`contradicted` outranks
+  `unsupported`) and deduping a flagged claim against an already-pending item are
+  mechanical, not judgment calls. Escalated claims go into a **separate** SQLite
+  queue (`review_queue.db`, not `corpus.db` — the queue holds real human-decision
+  history that must never share a file with something `run_ingest` can rebuild).
+  A CLI (`review/cli.py`) lets a reviewer approve/edit/reject each item with a
+  required rationale, fully audited (every decision logged, `review_item.status`
+  always reflects the latest one). Final-answer assembly combines Judge
+  1's `supported` claims with HITL-cleared ones — pending and rejected claims are
+  held back, never shown as if they were checked. Validated live (not just
+  against fakes): a real Kimi Judge 1 call correctly flagged a deliberately wrong
+  claim as `contradicted`, Judge 2 built the escalation packet, the claim was
+  correctly excluded before review and correctly excluded again after a simulated
+  reject decision. 16 new tests, all deterministic (no LLM dependency for this
+  phase at all).
+  Full loop: `PYTHONPATH=src python -m safety_qa.review.pipeline "your question"`
+  Work the queue: `PYTHONPATH=src python -m safety_qa.review.cli`
 
-Tested throughout: `pytest` (55 tests, all passing, zero requiring live API access).
+Tested throughout: `pytest` (71 tests, all passing, zero requiring live API access).

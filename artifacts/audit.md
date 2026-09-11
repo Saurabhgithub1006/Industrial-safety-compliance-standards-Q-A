@@ -140,3 +140,28 @@
 **Validation:** `run_eval.py` re-run for real: recall@5 = 100% (15/15), up from 93.3%. Full test suite re-run: 55/55 passing. Manual sanity check before the full eval: a 3-document toy corpus correctly ranked the semantically matching document highest (0.898) over two unrelated ones (0.665, 0.717).
 
 **Follow-ups:** First run of `semantic.py` on a machine without the model cached will download ~440MB from Hugging Face — not an issue in this environment (already cached now) but worth knowing if this repo is cloned fresh elsewhere. `artifacts/system-arch-and-roadmap.md`'s tech-stack section already described "dense embeddings" generically and did not need updating; only `README.md`'s Phase 2 status section referenced TF-IDF/LSA specifically and was updated.
+
+---
+
+## CHG-20260911-07 — 2026-09-11
+
+**Issue:** Begin Phase 5 of the roadmap: Judge 2 (escalation packaging of Judge 1's flagged claims) and HITL review (human approve/edit/reject), wired into answer assembly so only `supported` claims and human-cleared ones reach a final answer.
+
+**Root cause:** N/A — feature build, not a defect fix.
+
+**Impact:** New capability. No prior functionality affected — `review/` only reads `JudgedAnswer` objects Phase 4 already produces.
+
+**Fix implemented:** `review/escalation.py` (severity-ranked packet construction, zero LLM calls), `review/store.py` (persistent queue in its own DB file, dedup-on-insert against pending items only), `review/cli.py` (interactive reviewer loop with decision logic split out for testability), `review/assembly.py` (final answer = `supported` + HITL-cleared claims, pending/rejected held back and counted), `review/pipeline.py` (end-to-end wiring).
+
+**Decisions made:**
+- D1: Judge 2 makes zero LLM calls (severity ranking and deduping are mechanical) — presented as a decision point with an LLM-summary alternative noted as a deferrable enhancement; user chose Option A.
+- D2: HITL review interface is a CLI, consistent with the project's existing `ask.py`/`run_eval.py` pattern, rather than a new web-UI (e.g. Streamlit) dependency — presented as a decision point; user chose Option A.
+- D3: The review queue lives in a database file separate from `corpus.db` — recommended by agent (queue data is real human-decision history that must never share a file with something `run_ingest` can rebuild), not escalated as a full decision point since there was a clear best-practice answer and low controversy; stated in the plan, not contested.
+- D4: An edited claim is not re-run through Judge 1's automated grounding check — the human review is treated as the final check for that claim — recommended by agent, not contested.
+- D5: Dedup-on-insert only merges against a still-*pending* item, not an already-decided one — recommended by agent (a claim recurring after being rejected/approved is a new instance worth a human seeing again, not noise to suppress), not contested; added as its own test (`test_enqueue_does_not_dedup_against_already_decided_items`) after being identified as a real edge case during implementation, not caught in the original plan.
+
+**Alternatives rejected:** An LLM-written summary per escalation packet (D1, Option B) — not rejected outright, offered as a later, additive enhancement. A Streamlit review UI (D2, Option B) — same treatment, deferred rather than rejected.
+
+**Validation:** 16 new tests (71 total), all passing, zero LLM dependency for this phase. Live end-to-end smoke test: a real Kimi Judge 1 call correctly verdicted a deliberately wrong claim ("monthly" vs. the clause's actual "at least annually") as `contradicted`; Judge 2 built the escalation packet against the real corpus; the claim was correctly excluded from the final answer both before review (`pending_count=1`) and after a simulated reject decision (`rejected_count=1`), using a throwaway queue database, not the real one.
+
+**Follow-ups:** No automated test exercises the interactive `input()`-driven loop in `cli.py` itself (only its underlying `apply_decision` function) — acceptable given the project's existing convention (other CLIs like `generation/ask.py` aren't loop-tested either), but worth knowing if the CLI's prompt-handling logic grows more complex later. Phase 6 (feedback/regression harness) is expected to consume `review_decision` rows as its labeled dataset — not built yet.
