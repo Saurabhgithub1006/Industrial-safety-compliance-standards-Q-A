@@ -189,3 +189,27 @@
 **Validation:** 6 new tests (77 total) covering `overturned_cases()`/`override_rate()` against synthetic data, all passing. Live validation against the real, corrected queue: `run_regression.py` reports override rate 33.3% (1/3), correctly identifies the one overturned case as deterministic-sourced, explicitly declines to replay it, and reports "no LLM-judged overturned cases to replay" (accurate — neither genuine rejection was overturned).
 
 **Follow-ups:** No genuine `llm_judge`-sourced overturned case exists yet in the real queue (both live LLM-caught flags were confirmed correct via reject, not overturned) -- the replay-and-detect-regression code path is validated by the pure unit tests and by direct reasoning about its logic, but has not yet been exercised end-to-end against a real case that should show `ok` after a genuine judge misfire. This will happen naturally once real usage produces one.
+
+---
+
+## CHG-20260912-09 — 2026-09-12
+
+**Issue:** Phase 7 hardening, scoped to the 3 items the roadmap names: observability (log every Judge 1 verdict with model/prompt version), reviewer identity on HITL decisions, and a `wait_for_review` opt-in for the pipeline.
+
+**Root cause:** N/A -- feature build, not a defect fix. Two real gaps existed before this change, both directly named in the roadmap rather than discovered mid-build: `review_item` had no record of a `supported` verdict at all (only escalated claims were ever persisted), and `review/cli.py` defaulted every reviewer to the same `"local-reviewer"` string, making decisions unattributable to a specific person.
+
+**Impact:** New capability; no prior functionality affected. Fixes a real audit gap: prior to this change, there was no way to answer "which model and prompt version produced this verdict" for any claim, and no way to attribute a review decision to the person who made it.
+
+**Fix implemented:** `judge_verdict_log` table + `log_verdicts()`/`list_verdict_log()` in `review/store.py`; `JUDGE_PROMPT_VERSION` constant in `judging/prompt.py`; `model`/`prompt_version` fields on `JudgedClaim`, populated from the `LLMClient.model` attribute (added to the protocol and to `FakeLLMClient`, which had none); `resolve_reviewer_id()` in `review/cli.py` requiring `--reviewer NAME` or a non-empty interactive answer; `--wait` flag on `review/pipeline.py` reusing `cli.py`'s decision loop (factored out as `review_items_interactively()`) rather than duplicating it.
+
+**Decisions made:**
+- D1: do all three roadmap-named items in one change rather than a subset -- presented as a decision point; user chose Option A (all three).
+- D2: log every verdict (`supported` included), not just escalated ones -- recommended by agent as the correct reading of the arch doc's `JudgeVerdict` data model (which specifies logging every verdict, not a review-queue-specific subset); not contested.
+- D3: `--wait` reviews inline in the same process rather than polling for an external reviewer to act in a separate session -- recommended by agent as the only sensible implementation for a single-process CLI demo (a background poll loop would need a second process live-editing the same database); not contested.
+- D4: extract `review_items_interactively()` out of `cli.py` so `pipeline.py`'s `--wait` mode reuses the exact same decision loop rather than a second copy -- direct application of the project's existing "extract on the second use" standard, not escalated as a separate decision.
+
+**Alternatives rejected:** A full authentication system (passwords/sessions/RBAC) for reviewer identity, and a production observability stack (Prometheus/Grafana-style) for verdict logging -- both named explicitly in the Phase 0 intake as out of scope, genuine over-engineering for this project's size rather than deferred work.
+
+**Validation:** 10 new tests (87 total), all passing. Live: a real pipeline run logged all 6 real verdicts correctly tagged (`model=kimi-k2.6`, `prompt_version=v1`); reviewer-identity resolution unit-tested against mocked `input`, including the keep-re-prompting-on-empty-input case. Not live-validated, stated directly rather than glossed over: `--wait`'s exact end-to-end wiring (a real escalation from the same run correctly reaching the inline review loop and being reflected in the reassembled answer) -- forcing a real escalation on demand wasn't reliably achievable without spending real API budget against a 3 RPM rate limit hunting for one.
+
+**Follow-ups:** `--wait` should get a live end-to-end check once a real escalation naturally occurs during ordinary use, or if a deliberately-seeded scenario is built for it later the way CHG-20260911-07/08 seeded review history.

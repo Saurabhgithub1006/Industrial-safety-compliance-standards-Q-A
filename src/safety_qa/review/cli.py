@@ -1,16 +1,22 @@
 """Phase 5: interactive HITL review queue.
 
-    PYTHONPATH=src python -m safety_qa.review.cli
+    PYTHONPATH=src python -m safety_qa.review.cli --reviewer alice
 
 Per the Phase 5 kickoff decision (D2): a CLI, consistent with the project's
 existing ask.py/run_eval.py pattern, rather than a new web-UI dependency. The
 decision-applying logic (`apply_decision`) is deliberately separate from the
 `input()`-driven loop so it's unit-testable without simulating stdin.
+
+Phase 7 hardening: reviewer identity is required, never silently defaulted to a
+shared string -- a review decision is an audit-relevant action (Sec 4.6/Sec 6 of
+the arch doc), and every prior version of this CLI let every reviewer decide
+anonymously as "local-reviewer", making per-person accountability impossible.
 """
 
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 
 from .store import ReviewItem, connect, list_pending, record_decision
@@ -47,14 +53,25 @@ def _print_item(item: ReviewItem) -> None:
     print(f"Judge 1 reasoning: {item.judge1_reasoning}")
 
 
-def run(db_path: str = _DEFAULT_DB_PATH, reviewer_id: str = "local-reviewer") -> None:
-    conn = connect(db_path)
-    items = list_pending(conn)
-    if not items:
-        print("queue is empty -- nothing pending review")
-        return
+def resolve_reviewer_id(argv: list[str]) -> str:
+    """Never silently default to a shared identity: `--reviewer NAME` on the
+    command line, or an interactive prompt that keeps asking until a non-empty
+    identity is given. Raises nothing -- there is always a way out (provide the
+    flag, or type a name), so this only blocks on truly empty input."""
+    if "--reviewer" in argv:
+        idx = argv.index("--reviewer")
+        if idx + 1 < len(argv) and argv[idx + 1].strip():
+            return argv[idx + 1].strip()
+    reviewer_id = ""
+    while not reviewer_id:
+        reviewer_id = input("reviewer identity (required -- who is making these decisions?): ").strip()
+    return reviewer_id
 
-    print(f"{len(items)} item(s) pending review (worst severity first)")
+
+def review_items_interactively(conn: sqlite3.Connection, items: list[ReviewItem], reviewer_id: str) -> None:
+    """The interactive loop over a given list of items -- factored out so
+    `pipeline.py`'s `--wait` mode can drive it over just the items a single run
+    just escalated, without duplicating this loop."""
     for item in items:
         _print_item(item)
         while True:
@@ -78,6 +95,19 @@ def run(db_path: str = _DEFAULT_DB_PATH, reviewer_id: str = "local-reviewer") ->
             apply_decision(conn, item, action, reviewer_id, rationale, edited_text, edited_quote)
             print(f"  recorded: {action}")
             break
+
+
+def run(db_path: str = _DEFAULT_DB_PATH, reviewer_id: str | None = None) -> None:
+    if reviewer_id is None:
+        reviewer_id = resolve_reviewer_id(sys.argv[1:])
+    conn = connect(db_path)
+    items = list_pending(conn)
+    if not items:
+        print("queue is empty -- nothing pending review")
+        return
+
+    print(f"{len(items)} item(s) pending review (worst severity first)")
+    review_items_interactively(conn, items, reviewer_id)
 
 
 if __name__ == "__main__":

@@ -120,12 +120,12 @@ Industrial-safety-compliance-standards-Q-A/
 │       ├── grounding_judge.py             # deterministic re-check + batched semantic LLM judgment
 │       ├── eval_set.py                    # adversarial claims (hallucinated citations, altered quotes, contradictions)
 │       └── run_judge_eval.py              # CLI: python -m safety_qa.judging.run_judge_eval (needs ANTHROPIC_API_KEY)
-│   └── review/                            # Phase 5+6: Judge 2 + HITL + feedback loop (done)
+│   └── review/                            # Phase 5+6+7: Judge 2 + HITL + feedback loop + hardening (done)
 │       ├── escalation.py                  # Judge 2: severity-ranked escalation packets (no LLM)
-│       ├── store.py                       # persistent review queue (separate DB from corpus.db)
+│       ├── store.py                       # review queue + judge_verdict_log (separate DB from corpus.db)
 │       ├── assembly.py                    # final answer = supported + HITL-cleared claims
-│       ├── cli.py                         # CLI: python -m safety_qa.review.cli (work the queue)
-│       ├── pipeline.py                    # CLI: python -m safety_qa.review.pipeline "question" (full loop)
+│       ├── cli.py                         # CLI: python -m safety_qa.review.cli --reviewer NAME (work the queue)
+│       ├── pipeline.py                    # CLI: python -m safety_qa.review.pipeline [--wait --reviewer NAME] "question"
 │       ├── regression.py                  # overturned-case extraction + judge-override-rate metric
 │       └── run_regression.py              # CLI: python -m safety_qa.review.run_regression (needs ANTHROPIC_API_KEY)
 └── tests/
@@ -137,7 +137,7 @@ Industrial-safety-compliance-standards-Q-A/
     └── test_regression.py
 ```
 
-Hardening (Phase 7) lands under this structure per the phase plan in
+This structure now covers the full roadmap in
 [`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md) — that
 document is the source of truth for what gets built in what order.
 
@@ -233,5 +233,32 @@ document is the source of truth for what gets built in what order.
   6 new tests, all deterministic (the pure extraction/metric logic; the live
   replay is validated manually, same honest limitation as Phase 4's eval).
   Run: `PYTHONPATH=src python -m safety_qa.review.run_regression`
+- **Phase 7** (hardening) — done, scoped to the 3 items the roadmap actually names
+  (not a vague polish pass):
+  1. **Observability** — a new `judge_verdict_log` table (matching the arch doc's
+     `JudgeVerdict` data model exactly) records every Judge 1 verdict, `supported`
+     included — `review_item` only ever held escalated claims, so this is the only
+     permanent record of a `supported` verdict. Each entry is tagged with the model
+     and prompt version (`judging/prompt.py`'s `JUDGE_PROMPT_VERSION`) that produced
+     it, `None` for deterministic-layer catches (no model was called). Validated
+     live: a real run logged all 6 verdicts with `model=kimi-k2.6`,
+     `prompt_version=v1`.
+  2. **Reviewer identity is required, not defaulted** — `review/cli.py` no longer
+     silently assigns every reviewer the same `"local-reviewer"` string; it requires
+     `--reviewer NAME` or keeps prompting interactively until given a non-empty
+     identity. A review decision is audit-relevant; it should never be anonymous.
+  3. **`--wait` opt-in** on `review/pipeline.py` — reviews newly-escalated claims
+     inline, in the same run, before returning a final answer, instead of always
+     shipping partial and leaving items for a later `review/cli.py` session.
+     Reuses `cli.py`'s decision loop rather than duplicating it.
+  10 new tests, all deterministic. One honest gap, stated plainly rather than
+  glossed over: `--wait`'s exact end-to-end wiring (does a real escalation from
+  *this run* actually reach the inline review loop and get reassembled correctly)
+  wasn't exercised live — forcing a real escalation on demand isn't reliably
+  controllable (the generator has proven consistently well-grounded across every
+  real run so far) without spending real API budget hunting for one against a
+  3 RPM rate limit. Every piece it's built from (arg parsing, reviewer resolution,
+  the decision loop, answer assembly) is independently unit-tested and reused, not
+  duplicated — but that's not the same claim as "the wiring was observed working."
 
-Tested throughout: `pytest` (77 tests, all passing, zero requiring live API access).
+Tested throughout: `pytest` (87 tests, all passing, zero requiring live API access).

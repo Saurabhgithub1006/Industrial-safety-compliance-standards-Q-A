@@ -217,3 +217,30 @@ def test_supported_and_escalated_claims_properties(conn):
 
     assert [c.claim.claim_id for c in judged.supported_claims] == ["c1"]
     assert [c.claim.claim_id for c in judged.escalated_claims] == ["c2"]
+
+
+def test_llm_judge_verdicts_are_tagged_with_model_and_prompt_version(conn):
+    from safety_qa.judging.prompt import JUDGE_PROMPT_VERSION
+
+    llm = FakeLLMClient({"verdicts": [{"claim_id": "c1", "verdict": "supported", "reasoning": "ok"}]}, model="a-specific-model")
+    judge = GroundingJudge(conn, llm)
+
+    [result] = judge.evaluate_claims([
+        _claim("c1", "(a)", "Lockout and tagout devices shall be capable of withstanding the environment to which they are exposed.")
+    ])
+
+    assert result.source == "llm_judge"
+    assert result.model == "a-specific-model"
+    assert result.prompt_version == JUDGE_PROMPT_VERSION
+
+
+def test_deterministic_check_verdicts_carry_no_model_or_prompt_version(conn):
+    llm = FakeLLMClient()
+    judge = GroundingJudge(conn, llm)
+
+    [result] = judge.evaluate_claims([_claim("c1", "(z)(99)", "anything")])  # hallucinated citation
+
+    assert result.source == "deterministic_check"
+    assert result.model is None
+    assert result.prompt_version is None
+    assert llm.calls == []  # confirms no model was ever actually called for this one

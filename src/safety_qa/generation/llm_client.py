@@ -13,6 +13,8 @@ from typing import Protocol
 
 
 class LLMClient(Protocol):
+    model: str  # exposed so callers can log which model produced a given call (Phase 7 observability)
+
     def complete_structured(self, system: str, user: str, schema: dict, schema_name: str) -> dict:
         """Return a dict conforming to `schema` (a JSON Schema, e.g. from
         `GeneratedAnswer.model_json_schema()`). Raises on a response that can't be
@@ -110,11 +112,12 @@ class FakeLLMClient:
     actually sent -- catching prompt-construction bugs without needing a live model
     to notice them."""
 
-    def __init__(self, responses: list[dict] | dict | None = None):
+    def __init__(self, responses: list[dict] | dict | None = None, model: str = "fake-model"):
         if isinstance(responses, dict):
             responses = [responses]
         self._responses: list[dict] = list(responses) if responses else []
         self.calls: list[dict] = []
+        self.model = model
 
     def queue(self, response: dict) -> None:
         self._responses.append(response)
