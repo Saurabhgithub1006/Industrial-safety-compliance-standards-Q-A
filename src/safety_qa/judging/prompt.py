@@ -12,6 +12,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# Bump this whenever SYSTEM_PROMPT's wording changes meaningfully -- Phase 7
+# (observability) logs this alongside every LLM-judged verdict specifically so a
+# future regression is traceable to which prompt version produced which call.
+JUDGE_PROMPT_VERSION = "v1"
+
 SYSTEM_PROMPT = """You are an independent fact-checker verifying claims made about \
 industrial safety standards against the actual regulatory text. You did not write \
 these claims and have no stake in them being correct -- your only job is to check \

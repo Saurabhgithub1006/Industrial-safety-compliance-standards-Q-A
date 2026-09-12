@@ -32,7 +32,7 @@ from safety_qa.generation.llm_client import LLMClient
 from safety_qa.generation.schema import Claim
 from safety_qa.ingestion.store import get_clause_by_path
 
-from .prompt import SYSTEM_PROMPT, JudgeItem, build_user_prompt
+from .prompt import JUDGE_PROMPT_VERSION, SYSTEM_PROMPT, JudgeItem, build_user_prompt
 from .schema import ClaimVerdict, GroundingJudgeOutput, Verdict
 
 _SCHEMA_NAME = "grounding_judge_output"
@@ -49,6 +49,8 @@ class JudgedClaim:
     verdict: Verdict
     reasoning: str
     source: str  # "deterministic_check" or "llm_judge" -- which layer produced this
+    model: str | None = None  # which model made the call; None for deterministic_check (no call made)
+    prompt_version: str | None = None  # judging.prompt.JUDGE_PROMPT_VERSION at call time; None likewise
 
 
 @dataclass
@@ -126,7 +128,10 @@ class GroundingJudge:
             verdicts_by_id = self._judge_batch(items)
             for i, claim, _ in to_judge:
                 v = verdicts_by_id[claim.claim_id]
-                results[i] = JudgedClaim(claim=claim, verdict=v.verdict, reasoning=v.reasoning, source="llm_judge")
+                results[i] = JudgedClaim(
+                    claim=claim, verdict=v.verdict, reasoning=v.reasoning, source="llm_judge",
+                    model=self.llm.model, prompt_version=JUDGE_PROMPT_VERSION,
+                )
 
         return [r for r in results if r is not None]
 

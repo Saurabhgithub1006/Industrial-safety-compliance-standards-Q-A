@@ -1,16 +1,22 @@
-"""Phase 5: persistent review queue.
+"""Phase 5+7: persistent review queue and verdict log.
 
 Deliberately a SEPARATE database file from corpus.db (see the Phase 5 plan): the
 corpus is regenerable from raw source via run_ingest and safe to rebuild any time;
 this queue holds real human-decision history that must never share a file with
-something that gets wiped/rebuilt. Two tables, matching the arch doc's data model
+something that gets wiped/rebuilt. Tables, matching the arch doc's data model
 (Sec 5) plus the queue itself:
 
-  review_item      -- one row per escalated claim, its current status, and (once
-                       edited) the reviewer's replacement text -- the queue itself.
-  review_decision  -- append-only audit trail of every decision ever made, even if
-                       a reviewer revisits an item; review_item.status always
-                       reflects the latest one.
+  review_item        -- one row per escalated claim, its current status, and (once
+                         edited) the reviewer's replacement text -- the queue itself.
+  review_decision     -- append-only audit trail of every decision ever made, even
+                         if a reviewer revisits an item; review_item.status always
+                         reflects the latest one.
+  judge_verdict_log   -- Phase 7 observability: every Judge 1 verdict ever produced,
+                         supported or not, tagged with the model/prompt version that
+                         made the call (matching the arch doc's `JudgeVerdict` table)
+                         -- so a future regression is traceable to what changed.
+                         `review_item` only ever held *escalated* claims; this is
+                         the only place a `supported` verdict gets a permanent record.
 
 Dedup on insert: if a pending item already exists for the same (standard_id,
 clause, claim_text), a new escalation is merged into it rather than creating a
@@ -58,6 +64,18 @@ CREATE TABLE IF NOT EXISTS review_decision (
     decided_at        TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS judge_verdict_log (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id          TEXT NOT NULL,
+    query             TEXT NOT NULL,
+    verdict           TEXT NOT NULL,
+    reasoning         TEXT NOT NULL,
+    source            TEXT NOT NULL,
+    model             TEXT,
+    prompt_version    TEXT,
+    logged_at         TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_review_item_status ON review_item(status);
 """
 
@@ -82,6 +100,19 @@ class ReviewItem:
     edited_quote: str | None
     edited_clause: str | None
     created_at: str
+
+
+@dataclass(frozen=True)
+class VerdictLogEntry:
+    id: int
+    claim_id: str
+    query: str
+    verdict: str
+    reasoning: str
+    source: str
+    model: str | None
+    prompt_version: str | None
+    logged_at: str
 
 
 def connect(db_path: str) -> sqlite3.Connection:
@@ -181,6 +212,45 @@ def record_decision(
         (status, edited_text, edited_quote, edited_clause, item_id),
     )
     conn.commit()
+
+
+def log_verdict(conn: sqlite3.Connection, judged_claim, query: str) -> None:
+    """Phase 7 observability: record one Judge 1 verdict, whatever it was --
+    `supported` included. Takes a `JudgedClaim` (safety_qa.judging.grounding_judge)
+    by duck typing rather than importing the class, to avoid a hard dependency
+    from the storage layer on the judging package's internals."""
+    conn.execute(
+        """INSERT INTO judge_verdict_log
+             (claim_id, query, verdict, reasoning, source, model, prompt_version, logged_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            judged_claim.claim.claim_id, query, judged_claim.verdict, judged_claim.reasoning,
+            judged_claim.source, judged_claim.model, judged_claim.prompt_version, _now(),
+        ),
+    )
+    conn.commit()
+
+
+def log_verdicts(conn: sqlite3.Connection, judged_claims, query: str) -> None:
+    for jc in judged_claims:
+        log_verdict(conn, jc, query)
+
+
+def list_verdict_log(conn: sqlite3.Connection, claim_id: str | None = None) -> list[VerdictLogEntry]:
+    if claim_id is not None:
+        rows = conn.execute(
+            "SELECT * FROM judge_verdict_log WHERE claim_id = ? ORDER BY id", (claim_id,)
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM judge_verdict_log ORDER BY id").fetchall()
+    return [
+        VerdictLogEntry(
+            id=r["id"], claim_id=r["claim_id"], query=r["query"], verdict=r["verdict"],
+            reasoning=r["reasoning"], source=r["source"], model=r["model"],
+            prompt_version=r["prompt_version"], logged_at=r["logged_at"],
+        )
+        for r in rows
+    ]
 
 
 def _now() -> str:

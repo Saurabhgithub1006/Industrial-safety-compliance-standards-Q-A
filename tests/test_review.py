@@ -12,9 +12,11 @@ import pytest
 from safety_qa.generation.schema import Citation, Claim
 from safety_qa.judging.grounding_judge import JudgedAnswer, JudgedClaim
 from safety_qa.review.assembly import assemble_final_answer
-from safety_qa.review.cli import apply_decision
+from safety_qa.review.cli import apply_decision, resolve_reviewer_id
 from safety_qa.review.escalation import build_packets
-from safety_qa.review.store import connect, enqueue_all, get_item, list_pending, record_decision
+from safety_qa.review.store import (
+    connect, enqueue_all, get_item, list_pending, list_verdict_log, log_verdict, log_verdicts, record_decision,
+)
 
 
 def _claim(claim_id: str, text: str = "some claim", clause: str = "(a)") -> Claim:
@@ -148,6 +150,23 @@ def test_record_decision_rejects_invalid_action(conn):
 # cli.py
 # ---------------------------------------------------------------------------
 
+def test_resolve_reviewer_id_from_command_line_flag():
+    assert resolve_reviewer_id(["--reviewer", "alice"]) == "alice"
+
+
+def test_resolve_reviewer_id_prompts_when_flag_missing(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda _: "bob")
+    assert resolve_reviewer_id([]) == "bob"
+
+
+def test_resolve_reviewer_id_never_silently_defaults_on_empty_input(monkeypatch):
+    """Empty input must keep re-prompting, not fall through to some shared
+    default identity -- that's the entire point of this hardening item."""
+    answers = iter(["", "  ", "carol"])
+    monkeypatch.setattr("builtins.input", lambda _: next(answers))
+    assert resolve_reviewer_id([]) == "carol"
+
+
 def test_apply_decision_edit_stores_corrected_text(conn):
     mapping = enqueue_all(conn, build_packets(
         JudgedAnswer(query="q", judged_claims=[_judged_claim(_claim("c1"), "unsupported")])
@@ -213,7 +232,66 @@ def test_assembly_rejected_escalation_excluded_and_counted(conn):
     assert final.rejected_count == 1
 
 
+def test_pipeline_parse_args_extracts_wait_flag():
+    from safety_qa.review.pipeline import _parse_args
+
+    assert _parse_args(["--wait", "what", "is", "a", "lockout", "device"]) == (True, ["what", "is", "a", "lockout", "device"])
+    assert _parse_args(["what", "is", "a", "lockout", "device"]) == (False, ["what", "is", "a", "lockout", "device"])
+
+
 def test_assembly_passes_through_unsupported_aspects(conn):
     judged = JudgedAnswer(query="q", judged_claims=[], unsupported_aspects=["no clause covers X"])
     final = assemble_final_answer(judged, conn, claim_id_to_item_id={})
     assert final.unsupported_aspects == ["no clause covers X"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: judge_verdict_log (observability)
+# ---------------------------------------------------------------------------
+
+def test_log_verdict_records_supported_claims_too(conn):
+    """review_item never held `supported` claims -- the verdict log is the only
+    place that verdict gets a permanent record at all."""
+    jc = _judged_claim(_claim("c1", "a fine claim"), "supported", "matches the clause")
+    jc.model = "some-model"
+    jc.prompt_version = "v1"
+    log_verdict(conn, jc, query="what is X?")
+
+    [entry] = list_verdict_log(conn)
+    assert entry.claim_id == "c1"
+    assert entry.verdict == "supported"
+    assert entry.model == "some-model"
+    assert entry.prompt_version == "v1"
+
+
+def test_log_verdict_stores_none_model_for_deterministic_source(conn):
+    jc = _judged_claim(_claim("c1"), "unsupported", "cited clause does not exist in the corpus")
+    jc.source = "deterministic_check"
+    jc.model = None
+    jc.prompt_version = None
+    log_verdict(conn, jc, query="q")
+
+    [entry] = list_verdict_log(conn)
+    assert entry.source == "deterministic_check"
+    assert entry.model is None
+
+
+def test_log_verdicts_logs_every_claim_in_a_judged_answer(conn):
+    judged = JudgedAnswer(
+        query="q",
+        judged_claims=[
+            _judged_claim(_claim("c1"), "supported"),
+            _judged_claim(_claim("c2"), "unsupported"),
+        ],
+    )
+    log_verdicts(conn, judged.judged_claims, judged.query)
+
+    assert len(list_verdict_log(conn)) == 2
+
+
+def test_list_verdict_log_filters_by_claim_id(conn):
+    log_verdict(conn, _judged_claim(_claim("c1"), "supported"), query="q")
+    log_verdict(conn, _judged_claim(_claim("c2"), "supported"), query="q")
+
+    entries = list_verdict_log(conn, claim_id="c1")
+    assert [e.claim_id for e in entries] == ["c1"]
