@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS review_item (
     quote             TEXT NOT NULL,
     judge1_verdict    TEXT NOT NULL,
     judge1_reasoning  TEXT NOT NULL,
+    judge1_source     TEXT NOT NULL DEFAULT 'llm_judge',
     severity          INTEGER NOT NULL,
     status            TEXT NOT NULL DEFAULT 'pending',
     edited_text       TEXT,
@@ -74,6 +75,7 @@ class ReviewItem:
     quote: str
     judge1_verdict: str
     judge1_reasoning: str
+    judge1_source: str
     severity: int
     status: str
     edited_text: str | None
@@ -87,7 +89,19 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """CREATE TABLE IF NOT EXISTS doesn't retroactively add columns to a
+    review_item table that already existed under an older schema (e.g. a queue
+    file created before judge1_source was added) -- add any missing columns
+    without touching existing rows' data."""
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(review_item)")}
+    if "judge1_source" not in existing:
+        conn.execute("ALTER TABLE review_item ADD COLUMN judge1_source TEXT NOT NULL DEFAULT 'llm_judge'")
+        conn.commit()
 
 
 def enqueue_all(conn: sqlite3.Connection, packets: list[EscalationPacket]) -> dict[str, int]:
@@ -110,12 +124,12 @@ def enqueue_all(conn: sqlite3.Connection, packets: list[EscalationPacket]) -> di
         cur = conn.execute(
             """INSERT INTO review_item
                  (claim_id, query, claim_text, standard_id, clause, quote,
-                  judge1_verdict, judge1_reasoning, severity, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+                  judge1_verdict, judge1_reasoning, judge1_source, severity, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
             (
                 packet.claim_id, packet.query, packet.claim_text, packet.standard_id,
                 packet.clause, packet.quote, packet.judge1_verdict, packet.judge1_reasoning,
-                packet.severity, _now(),
+                packet.judge1_source, packet.severity, _now(),
             ),
         )
         result[packet.claim_id] = cur.lastrowid
@@ -178,6 +192,7 @@ def _row_to_item(row: sqlite3.Row) -> ReviewItem:
         id=row["id"], claim_id=row["claim_id"], query=row["query"], claim_text=row["claim_text"],
         standard_id=row["standard_id"], clause=row["clause"], quote=row["quote"],
         judge1_verdict=row["judge1_verdict"], judge1_reasoning=row["judge1_reasoning"],
+        judge1_source=row["judge1_source"],
         severity=row["severity"], status=row["status"], edited_text=row["edited_text"],
         edited_quote=row["edited_quote"], edited_clause=row["edited_clause"], created_at=row["created_at"],
     )
