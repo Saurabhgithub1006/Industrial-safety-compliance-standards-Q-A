@@ -86,6 +86,19 @@ def test_prompt_includes_only_retrieved_clause_text(retriever):
     assert "withstanding the environment" in sent_prompt
 
 
+def test_system_prompt_warns_against_citing_the_wrong_defined_term(retriever):
+    """Guards a real failure mode observed live: the generator once cited the
+    clause defining "lockout" (which mentions "energy isolating device" while
+    defining lockout) as if it defined "energy isolating device" itself. Judge 1
+    caught it, but the point of this rule is to stop it at the source."""
+    llm = FakeLLMClient(_valid_response("what must lockout devices withstand?"))
+    gen = Generator(retriever, llm)
+    gen.answer("what must lockout devices withstand?")
+
+    sent_system_prompt = llm.calls[0]["system"]
+    assert "defines ONLY that exact term" in sent_system_prompt
+
+
 def test_hallucinated_citation_is_rejected_not_trusted(retriever):
     response = _valid_response("what must lockout devices withstand?")
     response["claims"][0]["citation"]["clause"] = "(z)(99)"  # never retrieved

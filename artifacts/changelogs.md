@@ -116,3 +116,15 @@
 **Result:** 10 new tests, all deterministic. Live-validated: observability (a real run logged all 6 real verdicts with `model=kimi-k2.6`, `prompt_version=v1`) and reviewer-identity resolution (unit-tested against mocked input, including the "keep re-prompting on empty input" case). Not live-validated, stated plainly rather than claimed: `--wait`'s exact end-to-end wiring — forcing a real escalation on demand to exercise it wasn't reliably achievable without spending real API budget against a 3 RPM rate limit hunting for one, given the generator has proven consistently well-grounded across every real run so far. Its constituent pieces (arg parsing, reviewer resolution, the decision loop, answer assembly) are each independently unit-tested and reused, not duplicated. 87 tests passing total (77 pre-existing + 10 new).
 
 **Files:** `src/safety_qa/judging/prompt.py`, `grounding_judge.py`, `src/safety_qa/generation/llm_client.py`, `src/safety_qa/review/store.py`, `cli.py`, `pipeline.py`, `tests/test_judging.py`, `tests/test_review.py`, `README.md`
+
+---
+
+## CHG-20260916-10 — Post-roadmap optimization pass: retry, caching, citation rule — 2026-09-16
+
+**What:** A targeted review of the finished system (all 7 phases done) surfaced 3 concrete, worth-fixing gaps across reliability, cost, and grounding quality -- not a vague polish pass. All 3 implemented.
+
+**How it works:** `call_with_retry()` (new, in `llm_client.py`) wraps the actual API call in both `AnthropicClient` and `KimiClient` with exponential backoff (5s/10s/20s) on rate-limit/connection/server errors -- separate from the existing schema-validation retry in `generator.py`/`grounding_judge.py`, which handles a different failure mode entirely (malformed output, not a failed call). `AnthropicClient`'s system prompt is now sent as a content block with an explicit `cache_control: {"type": "ephemeral"}` breakpoint instead of a plain string, which is what Claude's prompt caching actually requires. `KimiClient` needed no equivalent change -- confirmed via Moonshot's own docs (not assumed) that their context caching is fully automatic for any repeated prefix over 256 tokens, and the system message already comes first in the request, which is the one thing on our side that matters for the cache to hit. `generation/prompt.py` gets a new rule 6: a definition-style clause (title names one specific term) defines *only* that term, even if its own text mentions other terms along the way -- addressing a real failure mode observed live this session (see Impact in the matching audit entry).
+
+**Result:** 6 new tests -- 5 for `call_with_retry` (mocking `time.sleep`, so they run in 0.08s rather than actually waiting through a backoff schedule), 1 confirming the new citation rule is actually present in the prompt sent to the model. Live-validated: a real call through the refactored `KimiClient` still works correctly end to end (6 correctly grounded claims, "what is a tagout device?"). 93 tests passing total (87 pre-existing + 6 new).
+
+**Files:** `src/safety_qa/generation/llm_client.py`, `prompt.py`, `tests/test_llm_client.py` (new), `tests/test_generation.py`, `README.md`
