@@ -21,7 +21,7 @@ or misapplied requirement is a safety defect, not a cosmetic bug.
 A generic LLM chatbot is the wrong tool here: it will answer fluently and confidently
 whether or not it actually knows the clause, and a wrong-but-confident answer in this
 domain is worse than no answer. The problem this project solves is not "can an LLM
-answer safety questions" — it's **"can we build a system that only ever answers with a
+answer safety questions" it's **"can we build a system that only ever answers with a
 claim it can point to a real clause for, and that catches itself (and gets a human to
 catch it) when it can't."**
 
