@@ -261,4 +261,28 @@ document is the source of truth for what gets built in what order.
   the decision loop, answer assembly) is independently unit-tested and reused, not
   duplicated — but that's not the same claim as "the wiring was observed working."
 
-Tested throughout: `pytest` (87 tests, all passing, zero requiring live API access).
+**Post-roadmap optimizations** (2026-09-16) — a targeted review of the finished
+system found 3 concrete, worth-fixing gaps rather than a vague "polish" pass:
+1. **Retry/backoff on transient API errors** (`llm_client.py`'s `call_with_retry`)
+   — closes a real gap: an unhandled `RateLimitError` was observed directly during
+   manual testing (Kimi's account tier is capped at 3 requests/minute). Exponential
+   backoff (5s/10s/20s), separate from the existing schema-validation retry, which
+   handles a different failure mode (malformed output, not a failed call).
+2. **Prompt caching on `AnthropicClient`** — an explicit `cache_control` breakpoint
+   on the system prompt, which the architecture doc always called for but the code
+   never implemented. `KimiClient` needed no equivalent change: Moonshot's context
+   caching is fully automatic for repeated prefixes over 256 tokens (confirmed via
+   their docs, not assumed), and the system message already comes first in every
+   request, which is the one thing on our side that actually matters for it to hit.
+3. **Tightened the generator's citation rule** — added after a real live failure
+   this session: asked "what is an energy isolating device?", the generator cited
+   the clause that *defines "lockout"* (which mentions "energy isolating device"
+   while doing so) as if it defined the term asked about. Judge 1 caught it
+   correctly and it never reached the user — but the fix addresses it at the
+   source instead of relying solely on the safety net catching it every time.
+
+6 new tests (5 for the retry helper, mocking `time.sleep` so they run instantly;
+1 confirming the new prompt rule is actually sent). Live-validated: a real call
+through the refactored `KimiClient` still works correctly end to end.
+
+Tested throughout: `pytest` (93 tests, all passing, zero requiring live API access).

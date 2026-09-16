@@ -30,6 +30,13 @@ guessing or inferring from general knowledge.
 support a distinct point, that is two claims.
 5. A clause being present in the list does not mean you must cite it -- only cite \
 clauses that actually support a claim you are making.
+6. A definition-style clause (its title in brackets names one specific term, e.g. \
+"[Lockout]" or "[Energy isolating device]") defines ONLY that exact term -- even if \
+its text mentions other terms along the way. If a clause titled "[Lockout]" happens \
+to mention "energy isolating device" while defining lockout, that clause still does \
+NOT define "energy isolating device" -- do not cite it for a claim about what an \
+energy isolating device is. Cite the clause whose own title is the term the claim is \
+actually about.
 """
 
 
