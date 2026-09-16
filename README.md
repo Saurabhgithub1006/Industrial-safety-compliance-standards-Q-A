@@ -5,16 +5,16 @@ in industrial automation (IEC/ISO/DIN-class standards such as IEC 61508, IEC 620
 ISO 13849-1, and their US-analogues like OSHA 1910). It answers *"what are the safety
 requirements for X"* with precise clause-number citations, refuses to answer when no
 source clause supports the claim, and routes every uncertain or contradicted claim
-through an automated LLM-judge check before a human ever needs to look at it — and to a
+through an automated LLM-judge check before a human ever needs to look at it and to a
 human review queue when the judge itself is unsure.
 
 ## Problem statement
 
 Industrial automation engineers (control system design, functional safety, machine
-safeguarding — the kind of work that sits behind PLCs, drives, and safety
+safeguarding the kind of work that sits behind PLCs, drives, and safety
 relays/controllers) constantly need to answer questions like *"what's required for an
 emergency stop category on this machine?"* or *"what SIL/PL does this safety function
-need?"*. The source of truth — IEC/ISO/DIN safety standards — is long, cross-referenced,
+need?"*. The source of truth IEC/ISO/DIN safety standards is long, cross-referenced,
 often paywalled in full, and getting the clause wrong has real consequences: a missed
 or misapplied requirement is a safety defect, not a cosmetic bug.
 
