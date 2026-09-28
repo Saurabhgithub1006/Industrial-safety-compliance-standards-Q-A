@@ -70,9 +70,15 @@ class JudgedAnswer:
 
 
 class GroundingJudge:
-    def __init__(self, conn: sqlite3.Connection, llm: LLMClient):
+    def __init__(self, conn: sqlite3.Connection | None, llm: LLMClient, clause_lookup=None):
+        """`clause_lookup`, if given, is `(standard_id, clause_path) -> Clause | None`
+        and replaces the default sqlite-backed lookup entirely -- `conn` can then
+        be `None`. This is how backend/ (a different storage engine, same
+        interface) reuses this class unchanged rather than needing its own copy
+        of the judging logic."""
         self.conn = conn
         self.llm = llm
+        self._clause_lookup = clause_lookup or (lambda standard_id, path: get_clause_by_path(self.conn, standard_id, path))
         self._schema = GroundingJudgeOutput.model_json_schema()
 
     def evaluate(self, generation_result: GenerationResult) -> JudgedAnswer:
@@ -100,7 +106,7 @@ class GroundingJudge:
         to_judge: list[tuple[int, Claim, str]] = []  # (index, claim, actual_clause_text)
 
         for i, claim in enumerate(claims):
-            actual_clause = get_clause_by_path(self.conn, claim.citation.standard_id, claim.citation.clause)
+            actual_clause = self._clause_lookup(claim.citation.standard_id, claim.citation.clause)
             if actual_clause is None:
                 results[i] = JudgedClaim(
                     claim=claim, verdict="unsupported",

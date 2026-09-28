@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Industrial Safety Compliance Q&amp;A</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #eef0ec; --paper-raised: #e4e7e1; --ink: #14181d; --ink-soft: #4b5359;
+    --rule: #c9cec6; --accent: #1d5c8a; --accent-soft: #dbe6ee;
+    --go: #1e7a4c; --go-soft: #dcece2; --stop: #b23a34; --stop-soft: #f3dfdc;
+    --caution: #a86a1f; --caution-soft: #f0e2cd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #12151a; --paper-raised: #191d23; --ink: #e7e9e4; --ink-soft: #9aa3a8;
+      --rule: #2c333a; --accent: #6fa8d6; --accent-soft: #1b2c3a;
+      --go: #5cb98a; --go-soft: #16281f; --stop: #e08a84; --stop-soft: #2e1d1c;
+      --caution: #e0a855; --caution-soft: #2e2515;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: "IBM Plex Sans", system-ui, sans-serif; line-height: 1.5; padding: 20px 16px 48px; }
+  h1,h2,h3 { font-family: "IBM Plex Sans Condensed", sans-serif; margin: 0; }
+  code, .mono { font-family: "IBM Plex Mono", monospace; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  header { padding-bottom: 24px; border-bottom: 1px solid var(--rule); margin-bottom: 24px; }
+  header h1 { font-size: 1.7rem; font-weight: 700; }
+  header p { color: var(--ink-soft); margin: 8px 0 0; max-width: 60ch; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; }
+  .tab { font-family: "IBM Plex Mono"; font-size: 12.5px; padding: 7px 14px; border-radius: 100px; border: 1px solid var(--rule); background: var(--paper-raised); color: var(--ink-soft); cursor: pointer; }
+  .tab.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+  form { display: flex; gap: 8px; margin-bottom: 20px; }
+  input[type=text] { flex: 1; font: inherit; font-size: 15px; padding: 11px 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper-raised); color: var(--ink); }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { font: inherit; font-weight: 600; padding: 11px 18px; border: none; border-radius: 6px; background: var(--accent); color: white; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary { background: var(--paper-raised); color: var(--ink); border: 1px solid var(--rule); }
+
+  .card { background: var(--paper-raised); border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; margin-bottom: 12px; }
+  .claim-text { margin: 0 0 8px; }
+  .cite { font-family: "IBM Plex Mono"; font-size: 12.5px; color: var(--accent); }
+  .pill { display: inline-block; font-family: "IBM Plex Mono"; font-size: 11px; padding: 3px 9px; border-radius: 100px; margin-bottom: 10px; }
+  .pill.pending { background: var(--caution-soft); color: var(--caution); }
+  .pill.contradicted { background: var(--stop-soft); color: var(--stop); }
+  .pill.unsupported { background: var(--caution-soft); color: var(--caution); }
+
+  .empty { color: var(--ink-soft); font-size: 14px; padding: 20px 0; }
+  .unsupported-list { font-size: 14px; color: var(--ink-soft); }
+
+  .queue-item textarea { width: 100%; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 5px; background: var(--paper); color: var(--ink); margin-top: 6px; }
+  .queue-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .queue-actions button { padding: 7px 14px; font-size: 13px; }
+  .btn-approve { background: var(--go); }
+  .btn-reject { background: var(--stop); }
+  .btn-edit { background: var(--caution); }
+  .reviewer-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; font-size: 13px; }
+  .reviewer-row input { font: inherit; padding: 7px 10px; border: 1px solid var(--rule); border-radius: 5px; background: var(--paper-raised); color: var(--ink); }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Industrial Safety Compliance Q&amp;A</h1>
+    <p>Ask a question about 29 CFR 1910.147 (lockout/tagout). Every claim is cited, independently judged, and anything flagged goes to human review before it's shown as answered.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="ask">Ask</button>
+    <button class="tab" data-tab="queue">Review queue</button>
+  </div>
+
+  <section id="ask-panel">
+    <form id="ask-form">
+      <input type="text" id="question" placeholder="e.g. what is a lockout device?" required>
+      <button type="submit" id="ask-btn">Ask</button>
+    </form>
+    <div id="ask-result"></div>
+  </section>
+
+  <section id="queue-panel" hidden>
+    <div class="reviewer-row">
+      <label for="reviewer">Reviewing as:</label>
+      <input type="text" id="reviewer" placeholder="your name" value="">
+      <button class="secondary" id="refresh-queue" type="button">Refresh</button>
+    </div>
+    <div id="queue-list"></div>
+  </section>
+</div>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  $('#ask-panel').hidden = tab !== 'ask';
+  $('#queue-panel').hidden = tab !== 'queue';
+  if (tab === 'queue') loadQueue();
+}
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+$('#ask-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const question = $('#question').value.trim();
+  if (!question) return;
+  const btn = $('#ask-btn');
+  btn.disabled = true;
+  btn.textContent = 'Thinking…';
+  $('#ask-result').innerHTML = '<p class="empty">Retrieving clauses, generating, judging — this can take a little while.</p>';
+  try {
+    const res = await fetch('/api/ask', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question}),
+    });
+    if (!res.ok) throw new Error(`request failed (${res.status})`);
+    const data = await res.json();
+    renderAnswer(data);
+  } catch (err) {
+    $('#ask-result').innerHTML = `<p class="empty">Something went wrong: ${escapeHtml(err.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Ask';
+  }
+});
+
+function renderAnswer(data) {
+  let html = '';
+  if (data.claims.length) {
+    html += data.claims.map(c => `
+      <div class="card">
+        <p class="claim-text">${escapeHtml(c.text)}</p>
+        <div class="cite">${escapeHtml(c.standard_id)} ${escapeHtml(c.clause)}</div>
+      </div>`).join('');
+  } else {
+    html += '<p class="empty">No claims cleared yet — see below.</p>';
+  }
+  if (data.pending_count) {
+    html += `<p class="unsupported-list">⏳ ${data.pending_count} point(s) pending human review — check the Review queue tab.</p>`;
+  }
+  if (data.rejected_count) {
+    html += `<p class="unsupported-list">${data.rejected_count} point(s) were reviewed and rejected.</p>`;
+  }
+  if (data.unsupported_aspects.length) {
+    html += '<p class="unsupported-list"><strong>Not covered by the corpus:</strong></p>';
+    html += '<ul class="unsupported-list">' + data.unsupported_aspects.map(a => `<li>${escapeHtml(a)}</li>`).join('') + '</ul>';
+  }
+  $('#ask-result').innerHTML = html;
+}
+
+async function loadQueue() {
+  $('#queue-list').innerHTML = '<p class="empty">Loading…</p>';
+  const res = await fetch('/api/queue');
+  const items = await res.json();
+  if (!items.length) {
+    $('#queue-list').innerHTML = '<p class="empty">Queue is empty — nothing pending review.</p>';
+    return;
+  }
+  $('#queue-list').innerHTML = items.map(renderQueueItem).join('');
+}
+
+function renderQueueItem(item) {
+  const pillClass = item.judge1_verdict === 'contradicted' ? 'contradicted' : 'unsupported';
+  return `
+    <div class="card queue-item" data-id="${item.id}">
+      <span class="pill ${pillClass}">${escapeHtml(item.judge1_verdict)}</span>
+      <p class="claim-text">${escapeHtml(item.claim_text)}</p>
+      <div class="cite">${escapeHtml(item.standard_id)} ${escapeHtml(item.clause)} — "${escapeHtml(item.quote)}"</div>
+      <p class="unsupported-list" style="margin-top:8px">Judge 1: ${escapeHtml(item.judge1_reasoning)}</p>
+      <textarea class="rationale" placeholder="rationale (required)" rows="2"></textarea>
+      <textarea class="edited-text" placeholder="corrected claim text (only for Edit)" rows="2" hidden></textarea>
+      <div class="queue-actions">
+        <button class="btn-approve" type="button" onclick="decide(${item.id}, 'approve')">Approve</button>
+        <button class="btn-edit" type="button" onclick="showEdit(${item.id})">Edit</button>
+        <button class="btn-reject" type="button" onclick="decide(${item.id}, 'reject')">Reject</button>
+      </div>
+    </div>`;
+}
+
+function showEdit(id) {
+  document.querySelector(`.queue-item[data-id="${id}"] .edited-text`).hidden = false;
+}
+
+async function decide(id, action) {
+  const reviewer = $('#reviewer').value.trim();
+  if (!reviewer) { alert('Enter your name in "Reviewing as" first.'); return; }
+  const card = document.querySelector(`.queue-item[data-id="${id}"]`);
+  const rationale = card.querySelector('.rationale').value.trim();
+  if (!rationale) { alert('Rationale is required.'); return; }
+  const editedText = card.querySelector('.edited-text').hidden ? null : card.querySelector('.edited-text').value.trim() || null;
+  if (action === 'edit' && !editedText) { alert('Enter corrected claim text for an edit.'); return; }
+
+  const res = await fetch(`/api/queue/${id}/decision`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reviewer_id: reviewer, action, rationale, edited_text: editedText}),
+  });
+  if (!res.ok) { alert('Failed to record decision.'); return; }
+  loadQueue();
+}
+
+$('#refresh-queue').addEventListener('click', loadQueue);
+</script>
+</body>
+</html>
