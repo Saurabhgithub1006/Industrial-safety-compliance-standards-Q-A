@@ -28,20 +28,28 @@ class FinalAnswer:
 
 
 def assemble_final_answer(
-    judged: JudgedAnswer, conn: sqlite3.Connection, claim_id_to_item_id: dict[str, int]
+    judged: JudgedAnswer, conn: sqlite3.Connection | None, claim_id_to_item_id: dict[str, int],
+    get_item_fn=None,
 ) -> FinalAnswer:
     """`claim_id_to_item_id` is the mapping returned by `store.enqueue_all()` for
     this same judged answer -- passed explicitly rather than re-derived, since
     dedup-on-insert means a claim's review_item may belong to an earlier query
     (same claim text/citation, different claim_id), and re-deriving that mapping
-    later would be ambiguous."""
+    later would be ambiguous.
+
+    `get_item_fn`, if given, is `(item_id) -> ReviewItem | None` and replaces the
+    default sqlite-backed lookup -- `conn` can then be `None`. Same pattern as
+    `GroundingJudge`'s `clause_lookup`: backend/ (a different storage engine, same
+    interface) reuses this function unchanged rather than needing its own copy of
+    the assembly rules."""
+    lookup = get_item_fn or (lambda item_id: get_item(conn, item_id))
     claims: list[Claim] = [jc.claim for jc in judged.supported_claims]
     pending = 0
     rejected = 0
 
     for jc in judged.escalated_claims:
         item_id = claim_id_to_item_id.get(jc.claim.claim_id)
-        item = get_item(conn, item_id) if item_id is not None else None
+        item = lookup(item_id) if item_id is not None else None
 
         if item is None or item.status == "pending":
             pending += 1

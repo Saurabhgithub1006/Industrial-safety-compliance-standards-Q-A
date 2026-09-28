@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+data/processed/
+backend/dev.db
+backend/static/**/*.map
+artifacts/
+tests/
+.history/

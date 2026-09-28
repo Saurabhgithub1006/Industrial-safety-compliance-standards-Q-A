@@ -84,6 +84,9 @@ Build and demonstrate a working system that:
 ```
 Industrial-safety-compliance-standards-Q-A/
 ├── README.md                              # this file
+├── DEPLOY.md                              # step-by-step Fly.io deployment guide
+├── Dockerfile                             # bakes the embedding model in at build time
+├── fly.toml                               # Fly.io app config
 ├── LICENSE
 ├── pyproject.toml
 ├── artifacts/
@@ -114,12 +117,12 @@ Industrial-safety-compliance-standards-Q-A/
 │   │   ├── prompt.py                      # system + user prompt construction
 │   │   ├── generator.py                   # retrieve -> prompt -> validate -> claims
 │   │   └── ask.py                         # CLI: python -m safety_qa.generation.ask (needs ANTHROPIC_API_KEY)
-│   └── judging/                           # Phase 4: Judge 1, grounding & contradiction (done)
-│       ├── schema.py                      # Pydantic: ClaimVerdict / GroundingJudgeOutput
-│       ├── prompt.py                      # independent judge system + user prompt
-│       ├── grounding_judge.py             # deterministic re-check + batched semantic LLM judgment
-│       ├── eval_set.py                    # adversarial claims (hallucinated citations, altered quotes, contradictions)
-│       └── run_judge_eval.py              # CLI: python -m safety_qa.judging.run_judge_eval (needs ANTHROPIC_API_KEY)
+│   ├── judging/                           # Phase 4: Judge 1, grounding & contradiction (done)
+│   │   ├── schema.py                      # Pydantic: ClaimVerdict / GroundingJudgeOutput
+│   │   ├── prompt.py                      # independent judge system + user prompt
+│   │   ├── grounding_judge.py             # deterministic re-check + batched semantic LLM judgment
+│   │   ├── eval_set.py                    # adversarial claims (hallucinated citations, altered quotes, contradictions)
+│   │   └── run_judge_eval.py              # CLI: python -m safety_qa.judging.run_judge_eval (needs ANTHROPIC_API_KEY)
 │   └── review/                            # Phase 5+6+7: Judge 2 + HITL + feedback loop + hardening (done)
 │       ├── escalation.py                  # Judge 2: severity-ranked escalation packets (no LLM)
 │       ├── store.py                       # review queue + judge_verdict_log (separate DB from corpus.db)
@@ -128,13 +131,23 @@ Industrial-safety-compliance-standards-Q-A/
 │       ├── pipeline.py                    # CLI: python -m safety_qa.review.pipeline [--wait --reviewer NAME] "question"
 │       ├── regression.py                  # overturned-case extraction + judge-override-rate metric
 │       └── run_regression.py              # CLI: python -m safety_qa.review.run_regression (needs ANTHROPIC_API_KEY)
+├── backend/                                # deployed web app: FastAPI + PostgreSQL (done)
+│   ├── main.py                             # FastAPI app -- wires the existing pipeline behind HTTP
+│   ├── db.py                               # portable engine: sqlite:/// locally, postgresql:// in production
+│   ├── models.py                           # SQLAlchemy Core table definitions
+│   ├── corpus_store.py                     # corpus persistence, mirrors ingestion/store.py's interface
+│   ├── review_store.py                     # review-queue persistence, mirrors review/store.py's interface
+│   ├── ingest.py                           # auto-runs on first boot against an empty database
+│   ├── schemas.py                          # API request/response models
+│   └── static/index.html                   # the frontend -- ask a question, work the review queue
 └── tests/
     ├── test_ingestion.py
     ├── test_retrieval.py
     ├── test_generation.py
     ├── test_judging.py
     ├── test_review.py
-    └── test_regression.py
+    ├── test_regression.py
+    └── test_backend.py
 ```
 
 This structure now covers the full roadmap in
@@ -285,4 +298,21 @@ system found 3 concrete, worth-fixing gaps rather than a vague "polish" pass:
 1 confirming the new prompt rule is actually sent). Live-validated: a real call
 through the refactored `KimiClient` still works correctly end to end.
 
-Tested throughout: `pytest` (93 tests, all passing, zero requiring live API access).
+**Web app** (2026-09-28) — a deployed FastAPI + PostgreSQL app, wrapping the same
+pipeline behind HTTP instead of the CLI tools. None of the pipeline logic (Generator,
+GroundingJudge, escalation, assembly) was reimplemented — `backend/` adds a new
+storage layer (SQLAlchemy Core, portable between SQLite for local dev and
+PostgreSQL in production, same code either way) and injects it into
+`GroundingJudge`/`assemble_final_answer` via a small, additive dependency-injection
+parameter each already had room for (`clause_lookup` / `get_item_fn`), keeping every
+existing SQLite-based CLI call site working unchanged. 8 new tests, plus a real,
+live end-to-end round trip through the running app (not just the storage layer in
+isolation): `POST /api/ask "what is a lockout device?"` returned 3 correctly
+grounded claims through the full retrieve → generate → judge → assemble path.
+Containerized (the embedding model is baked into the image at build time, closing
+the same cold-start gap the earlier optimization pass flagged) and configured for
+Fly.io (`fly.toml`) — see [`DEPLOY.md`](DEPLOY.md) for the exact deploy steps
+(the CLI is installed and ready; only the account login and the final `flyctl
+deploy` need your own Fly.io account, which nothing here can do on your behalf).
+
+Tested throughout: `pytest` (101 tests, all passing, zero requiring live API access).

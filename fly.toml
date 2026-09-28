@@ -1,0 +1,33 @@
+# Fly.io app config. `app` must be globally unique on Fly -- if this name is
+# already taken, `fly launch` will prompt for a different one; that's expected
+# and fine, just update this file to match what you picked.
+app = "industrial-safety-qa"
+primary_region = "iad"
+
+[build]
+
+[env]
+LLM_PROVIDER = "kimi"
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
+# Scales to zero when idle to keep this cost-free on Fly's free allowance --
+# consistent with the project's cost-conscious design throughout. The tradeoff:
+# the first request after idle pays a cold-start cost (the baked-in embedding
+# model still needs loading into memory, just not re-downloaded). Set this to 1
+# instead if you'd rather keep it always warm and pay for that.
+min_machines_running = 0
+
+[[http_service.checks]]
+grace_period = "30s"
+interval = "15s"
+method = "GET"
+path = "/api/health"
+timeout = "5s"
+
+[[vm]]
+size = "shared-cpu-1x"
+memory = "1024mb"
