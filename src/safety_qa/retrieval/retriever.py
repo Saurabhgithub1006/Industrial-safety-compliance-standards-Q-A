@@ -1,11 +1,5 @@
-"""Hybrid retriever: BM25 (lexical) + TF-IDF/LSA (semantic) fused with RRF.
-
-The index is built in-memory from the Chunk store at construction time -- at this
-corpus's scale (hundreds of clauses, not millions) there's no reason to persist
-vectors to disk; `Retriever.from_db(...)` rebuilds the whole index in well under a
-second. Persisting/caching becomes worth doing once ingestion covers enough
-standards that rebuild time actually matters (Phase 7 territory, not now).
-"""
+"""Hybrid retriever: BM25 (lexical) + e5 embeddings (semantic), fused with RRF.
+Index is built in-memory at construction time, no on-disk vector cache."""
 
 from __future__ import annotations
 
@@ -24,7 +18,7 @@ from .semantic import SemanticIndex
 class RetrievedChunk:
     chunk: Chunk
     rrf_score: float
-    bm25_rank: int | None  # 0-based; None if the chunk scored 0 on this leg
+    bm25_rank: int | None  # None if this leg scored it 0
     semantic_rank: int | None
 
 
@@ -68,7 +62,5 @@ class Retriever:
 
 
 def _rank_nonzero(scores: list[float]) -> list[int]:
-    """Indices sorted best-first, excluding zero-score entries -- a chunk with no
-    signal at all from a given leg shouldn't get credit in that leg's ranking just
-    because everything left over is tied at zero."""
+    """Indices sorted best-first, zero-score entries excluded."""
     return [i for i, s in sorted(enumerate(scores), key=lambda kv: kv[1], reverse=True) if s > 0]

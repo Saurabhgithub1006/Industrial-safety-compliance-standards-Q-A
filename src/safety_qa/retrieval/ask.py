@@ -1,11 +1,8 @@
-"""Ad-hoc query CLI -- type a question, see what Phase 2 retrieval finds for it.
+"""Ad-hoc query CLI: shows raw retrieval results, no generation step.
 
     PYTHONPATH=src python -m safety_qa.retrieval.ask "what is a lockout device?"
 
-Or with no argument, drops into an interactive loop (type 'quit' to exit). This is
-NOT the final answering system -- there's no generation/LLM step yet (that's
-Phase 3). It just shows you, honestly, what the retriever hands to that future step:
-the top-k clause chunks and their citation keys, nothing synthesized on top.
+No argument drops into an interactive loop.
 """
 
 from __future__ import annotations

@@ -3,21 +3,9 @@
     PYTHONPATH=src python -m safety_qa.review.pipeline "your question"
     PYTHONPATH=src python -m safety_qa.review.pipeline --wait --reviewer alice "your question"
 
-generate (Phase 3) -> judge (Phase 4) -> log every verdict (Phase 7 observability)
--> escalate + enqueue (Phase 5, Judge 2) -> assemble the final answer from what's
-already trustworthy plus whatever HITL has already cleared, either from a PRIOR
-run of safety_qa.review.cli, or (with --wait) right now in this same run. This is
-the concrete demonstration of the Phase 5 exit criteria: generation -> Judge 1
-flag -> Judge 2 packet -> human decision -> correct effect on the final answer.
-
-Default behavior ships a partial answer immediately and leaves anything flagged
-in the queue for later (per the arch doc Sec 4.7's default policy). --wait is the
-opt-in it describes for a caller who wants a fully-reviewed answer before
-returning -- reviews inline, in this same run, rather than blocking on some
-external process.
-
-Needs a real LLM API key (see generation/ask.py) -- this wires together Phases 3
-and 4, both of which call an LLM.
+generate -> judge -> log verdicts -> escalate/enqueue -> assemble. --wait reviews
+inline in this run instead of leaving items for a later cli.py pass.
+Needs an LLM API key. See artifacts/changelogs.md CHG-20260911-07 and CHG-20260912-09.
 """
 
 from __future__ import annotations
@@ -65,10 +53,7 @@ def _print_result(final: FinalAnswer) -> None:
 
 
 def _parse_args(argv: list[str]) -> tuple[bool, list[str]]:
-    """Pulls --wait out of the argument list (handled here, not by cli.py's
-    resolve_reviewer_id, since --reviewer is only required in --wait mode -- a
-    caller happy with the default ship-partial-immediately behavior shouldn't be
-    prompted for a reviewer identity they don't need)."""
+    """Pulls --wait out of argv; --reviewer is only required in --wait mode."""
     wait = "--wait" in argv
     remaining = [a for a in argv if a != "--wait"]
     return wait, remaining
@@ -96,7 +81,7 @@ def run(corpus_db_path: str = _DEFAULT_CORPUS_DB, review_db_path: str = _DEFAULT
     judged = judge.evaluate(generation_result)
 
     review_conn = connect_review(review_db_path)
-    log_verdicts(review_conn, judged.judged_claims, judged.query)  # Phase 7 observability: every verdict, not just escalated ones
+    log_verdicts(review_conn, judged.judged_claims, judged.query)  # logs every verdict, not just escalated ones
 
     packets = build_packets(judged)
     claim_id_to_item_id = enqueue_all(review_conn, packets)

@@ -1,36 +1,8 @@
 """Clause-aware parser for eCFR-style OSHA regulation XML (e.g. 29 CFR 1910.147).
-
-Why this is nontrivial: the source markup does NOT nest clauses as XML elements.
-A whole opening chain like "(a) <I>Scope...</I>-(1) <I>Scope.</I> (i) This standard
-covers..." lives in a single flat <P> tag; the hierarchy is encoded only as literal
-text markers ("(a)", "(1)", "(i)", "(A)", ...) that repeat the same four pattern
-classes at every 4th level of nesting. Inline cross-references ("see paragraph (c)(1)
-of this section") use the identical bracket syntax and must NOT be mistaken for
-structural markers. This module reconstructs the true clause tree from that flat text.
-
-Two building blocks:
-  1. `_split_leading_chain` -- pulls the leading run of structural "(marker)[title]"
-     openers off the front of one <P>'s text, stopping at the first marker whose
-     immediately-following text is NOT itself another marker (that marker's remainder
-     is body text, not a title -- and everything after it is body, full stop, so an
-     inline reference buried in body prose is never reached by this scan).
-  2. `_ClauseStack` -- resolves each opener against the CFR numbering cycle
-     (alpha-lower -> digit -> roman-lower -> alpha-upper -> repeat) to decide whether
-     it's a new child of the current clause or a sibling that supersedes one or more
-     open levels.
-
-Scoping decisions made here (see artifacts/system-arch-and-roadmap.md Sec 1 and the
-architect-review notes on this doc):
-  - The (b) "Definitions" block is prose, not marker-numbered, in the source -- each
-    defined term becomes its own clause with a synthetic citation key
-    (`.../definitions/term:<slug>`), since standards get cited by defined term ("the
-    OSHA definition of 'authorized employee'") not by a number that doesn't exist.
-  - <NOTE> blocks are ingested as separate `is_normative=False` clauses attached to
-    the clause they annotate -- a note is explanatory, never itself a citable
-    requirement, and must never be presented to a user as one.
-  - The non-mandatory Appendix A is stored as a single `is_normative=False` blob
-    rather than fully sub-parsed -- it's explicitly non-mandatory guidance, not
-    "safety requirements" text, which is this project's actual scope.
+Rebuilds the clause tree from flat, unnested markup: "(a)", "(1)", "(i)" markers
+appear as plain text inside one <P> tag, not as nested XML elements.
+Design decisions and the bugs found fixing this are logged in
+artifacts/changelogs.md CHG-20260907-01.
 """
 
 from __future__ import annotations
@@ -43,17 +15,12 @@ from .canonical import citation_key, slugify, synthetic_citation_key
 from .models import Clause
 
 _MARKER_RE = re.compile(r"^\s*\(([A-Za-z0-9]{1,4})\)\s*")
-# A title span may itself contain a parenthetical aside, e.g. "Outside personnel
-# (contractors, etc.)." -- allow nested parens as long as their content isn't a bare
-# short alnum token (which would make it look like a real structural marker).
+# Title span may contain a parenthetical aside, e.g. "(contractors, etc.)".
+# Nested parens allowed as long as their content isn't a bare short token.
 _TITLE_RE = re.compile(r"^((?:[^()]|\([^()]*[\s,.;][^()]*\)){1,80}?[.—:])\s*")
 _CROSSREF_GUARD_WORDS = ("paragraph", "section", "subpart", "part")
 
-# CFR's nesting convention: depth 1 is always alpha_lower ((a),(b),(c)...) and never
-# repeats; depths 2+ cycle through digit -> roman_lower -> alpha_upper and then repeat
-# that 3-cycle for arbitrarily deep nesting -- e.g. (c)(5)(ii)(A)(1)(i)(A) is depths
-# 1..7. (Not a 4-class cycle that revisits alpha_lower -- that letter is reserved for
-# the top level only.)
+# depth 1 is alpha_lower, depths 2+ cycle digit -> roman_lower -> alpha_upper.
 _DEEP_CYCLE = ["digit", "roman_lower", "alpha_upper"]
 
 
@@ -77,16 +44,12 @@ def _roman_to_int(token: str) -> int:
 
 
 def _is_first_value(token: str, cls: str) -> bool:
-    """Does `token` open a class's sequence from scratch? A brand-new nested list
-    always starts here -- 'a', '1', 'i', 'A' -- never mid-sequence."""
+    """True if token is the first value of its class: 'a', '1', 'i', 'A'."""
     return token == {"alpha_lower": "a", "alpha_upper": "A", "digit": "1", "roman_lower": "i"}[cls]
 
 
 def _is_successor(prev_token: str, token: str, cls: str) -> bool:
-    """Is `token` exactly the next value after `prev_token` in `cls`'s sequence?
-    This is what actually distinguishes 'continue this list' from 'open a nested
-    one' -- punctuation (a trailing '.' vs ':') turns out not to be a reliable
-    signal in real CFR text, but strict value succession always is."""
+    """True if token is exactly the next value after prev_token."""
     try:
         if cls in ("alpha_lower", "alpha_upper"):
             return len(prev_token) == 1 and len(token) == 1 and ord(token) - ord(prev_token) == 1
@@ -100,10 +63,7 @@ def _is_successor(prev_token: str, token: str, cls: str) -> bool:
 
 
 def _possible_classes(token: str) -> set[str]:
-    """Which numbering-cycle classes could this literal token belong to? Several
-    tokens are genuinely ambiguous out of context (e.g. 'i' is both a valid single
-    letter and a valid roman numeral) -- resolution happens against the live stack,
-    not here."""
+    """Which numbering classes could this token belong to (can be ambiguous)."""
     classes: set[str] = set()
     if len(token) == 1 and token.isalpha():
         classes.add("alpha_lower" if token.islower() else "alpha_upper")
@@ -117,10 +77,7 @@ def _possible_classes(token: str) -> set[str]:
 
 
 def _split_leading_chain(text: str) -> tuple[list[tuple[str, str | None]], str]:
-    """Consume the leading '(marker)[title]/(marker)[title].../body' run from the
-    start of `text`. Returns (chain, body) where chain is an ordered list of
-    (marker_token, title_or_None) and body is the remaining, un-consumed text
-    (the payload of the last marker in the chain)."""
+    """Split leading '(marker)[title]...' openers off text. Returns (chain, body)."""
     chain: list[tuple[str, str | None]] = []
     remaining = text
     while True:
@@ -155,24 +112,9 @@ class _StackLevel:
 
 
 class _ClauseStack:
-    """Tracks the currently-open clause path and resolves each new *lone* marker
-    (the first token of a fresh <P>, per `resolve()`) against it.
-
-    The key realization this encodes: a lone marker can mean two very different
-    things, and pattern class alone can't tell them apart --
-      - most of the time, it's a sibling: continuing the current list, or returning
-        to a shallower one after a nested list ends ((d)(4)(iii)(B) -> (d)(5));
-      - occasionally, it opens a brand-new nested list with no title of its own
-        ((e)(3) -> (i), a lone marker one level deeper than anything currently open).
-    Trailing punctuation in the source ('.' vs ':') turns out NOT to reliably mark
-    which case applies -- real CFR text uses a period before a sub-list just as
-    often as a colon. What's actually reliable is the token's *value*: a sibling is
-    always the literal successor of the level it continues ('iii' -> 'iv', '4' ->
-    '5'); a new nested list always starts at its class's first value ('i', 'A',
-    '1'). So successor-match is tried first (deepest matching level down to
-    shallowest), then first-of-a-new-class, and only a loose class-only match as a
-    last resort.
-    """
+    """Tracks the open clause path. Resolves each lone marker as either a
+    sibling (successor of the current value) or a new nested level (first
+    value of its class) -- see resolve()."""
 
     def __init__(self, standard_id: str):
         self.standard_id = standard_id
@@ -214,22 +156,19 @@ class _ClauseStack:
                 raise ValueError(f"first clause marker {token!r} isn't a valid depth-1 label")
             return self._push(token, 1, expected)
 
-        # 1. Sibling continuation: deepest existing level whose class matches AND
-        #    whose current token this is the literal successor of.
+        # 1. Sibling: deepest level whose class matches and is a successor.
         for i in range(len(self._levels) - 1, -1, -1):
             lvl = self._levels[i]
             if lvl.cls in classes and _is_successor(lvl.token, token, lvl.cls):
                 return self._push(token, i + 1, lvl.cls)
 
-        # 2. New nested list: token is the first value of the class expected one
-        #    level deeper than whatever's currently open.
+        # 2. New nested list: first value of the class one level deeper.
         next_depth = len(self._levels) + 1
         expected_cls = _expected_class(next_depth)
         if expected_cls in classes and _is_first_value(token, expected_cls):
             return self._push(token, next_depth, expected_cls)
 
-        # 3. Last resort: loose class match, ignoring value succession (covers any
-        #    numbering irregularity in the source rather than failing outright).
+        # 3. Fallback: loose class match, ignoring value succession.
         for i in range(len(self._levels) - 1, -1, -1):
             if self._levels[i].cls in classes:
                 return self._push(token, i + 1, self._levels[i].cls)
@@ -240,16 +179,9 @@ class _ClauseStack:
         )
 
     def push_child(self, token: str) -> _StackLevel:
-        """Unconditionally push `token` as a new child of the current deepest level.
-
-        Used for every marker AFTER the first in a within-<P> opening chain -- its
-        parent relationship is already structurally forced by `_split_leading_chain`
-        (a title immediately followed by another marker means "nested", full stop),
-        so it must never fall through to the ambiguous sibling-matching in
-        `resolve()`. Without this split, a token like 'i' -- valid as both a fresh
-        top-level letter *and* a roman numeral -- gets wrongly matched against a
-        stale top-level sibling instead of deepening.
-        """
+        """Push token as a child. Used for markers after the first in a chain,
+        where nesting is already structurally forced, so it skips resolve()'s
+        ambiguous sibling matching."""
         classes = _possible_classes(token)
         next_depth = len(self._levels) + 1
         expected_cls = _expected_class(next_depth)
@@ -262,21 +194,13 @@ class _ClauseStack:
 
 
 def _flatten(elem: ET.Element) -> str:
-    """All text content of `elem`, ignoring tag structure (italics, emphasis, etc.)
-    -- markers split across a plain '(' + italic digit + plain ')' (an eCFR quirk for
-    deeply-nested items) still reconstruct correctly since itertext() preserves
-    character order regardless of which run each character sits in."""
+    """All text content of elem, ignoring tag structure like <I> italics."""
     return "".join(elem.itertext())
 
 
 def parse_osha_section(xml_path: str, standard_id: str) -> tuple[str, list[Clause]]:
-    """Parse one eCFR <DIV8 TYPE="SECTION"> section into (section_heading, clauses).
-
-    Returns clauses in ingestion order, each independently queryable by its
-    `citation_key`. Raises ValueError (rather than silently dropping content) if a
-    marker can't be resolved -- for a compliance corpus, failing loud on an unparsed
-    clause is the correct behavior; silently skipping one is not.
-    """
+    """Parse one eCFR <DIV8> section into (section_heading, clauses).
+    Raises ValueError on an unresolvable marker rather than skipping it."""
     tree = ET.parse(xml_path)
     root = tree.getroot()
     if root.tag != "DIV8":
@@ -310,8 +234,7 @@ def parse_osha_section(xml_path: str, standard_id: str) -> tuple[str, list[Claus
                 if definitions_mode and stack.depth() == 1:
                     _emit_definition(clauses, standard_id, stack, raw_text, next_order())
                     continue
-                # Fallback: no marker, not a definitions entry -- append as a
-                # continuation of the current deepest clause rather than drop it.
+                # No marker, not a definition: append to the current clause.
                 if clauses:
                     last = clauses[-1]
                     merged_text = (last.text + " " + raw_text).strip()
@@ -396,8 +319,7 @@ def parse_osha_section(xml_path: str, standard_id: str) -> tuple[str, list[Claus
                 )
             )
 
-        # CITA (amendment history) and anything else: not safety-requirement
-        # content, deliberately not ingested as a clause.
+        # CITA (amendment history) and anything else: not a clause, skipped.
 
     return section_heading, clauses
 
@@ -409,8 +331,7 @@ def _emit_definition(
     raw_text: str,
     order_index: int,
 ) -> None:
-    """One entry in a prose-style '(b) Definitions' block: 'Term. Definition body.'
-    with no clause marker of its own. Cited by defined term, not by number."""
+    """One 'Term. Body.' entry in a Definitions block, cited by term not number."""
     m = re.match(r"^([^.]{1,80})\.\s*(.*)$", raw_text, re.DOTALL)
     term = m.group(1).strip() if m else raw_text
     body = m.group(2).strip() if m else ""

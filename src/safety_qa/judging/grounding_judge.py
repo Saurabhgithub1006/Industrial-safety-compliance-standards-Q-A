@@ -1,22 +1,6 @@
 """Phase 4: Judge 1 -- Grounding & Contradiction Judge.
-
-Two layers, matching the arch doc's design exactly:
-
-  1. An independent, deterministic re-check -- for every claim, re-fetch the cited
-     clause straight from the corpus by (standard_id, clause_path) and verify the
-     quote is genuinely a verbatim excerpt of THAT freshly-fetched text. This
-     duplicates what Phase 3's generator already checked, on purpose: Judge 1 must
-     not just trust the generator's framing, so it re-derives the same fact from
-     scratch via its own DB lookup rather than reusing Phase 3's chunk objects.
-     A claim that fails this is "unsupported" -- no LLM call needed, it's already
-     a fact.
-  2. For everything that clears step 1, one batched LLM call asks the actual
-     semantic question step 1 can't: does the (already-verified-verbatim) quote
-     really entail the claim, or does the claim misrepresent/contradict what the
-     clause actually says? This is the part no amount of string matching can do.
-
-Cost design (per the arch doc's Sec 4.4 architect note): all of a batch's claims go
-in ONE LLM call with an explicit anti-bias instruction, not one call per claim.
+Two layers: a deterministic re-check against the corpus, then one batched LLM
+call per answer for claims that clear it. See artifacts/changelogs.md CHG-20260907-04.
 """
 
 from __future__ import annotations
@@ -39,8 +23,7 @@ _SCHEMA_NAME = "grounding_judge_output"
 
 
 class JudgeError(Exception):
-    """Judge 1 failed to produce a schema-valid, complete response even after one
-    retry -- raised rather than silently defaulting every claim to some verdict."""
+    """Judge 1 failed to produce a valid response even after one retry."""
 
 
 @dataclass
@@ -48,9 +31,9 @@ class JudgedClaim:
     claim: Claim
     verdict: Verdict
     reasoning: str
-    source: str  # "deterministic_check" or "llm_judge" -- which layer produced this
-    model: str | None = None  # which model made the call; None for deterministic_check (no call made)
-    prompt_version: str | None = None  # judging.prompt.JUDGE_PROMPT_VERSION at call time; None likewise
+    source: str  # "deterministic_check" or "llm_judge"
+    model: str | None = None  # model that made the call; None for deterministic_check
+    prompt_version: str | None = None  # JUDGE_PROMPT_VERSION at call time; None likewise
 
 
 @dataclass
@@ -71,21 +54,15 @@ class JudgedAnswer:
 
 class GroundingJudge:
     def __init__(self, conn: sqlite3.Connection | None, llm: LLMClient, clause_lookup=None):
-        """`clause_lookup`, if given, is `(standard_id, clause_path) -> Clause | None`
-        and replaces the default sqlite-backed lookup entirely -- `conn` can then
-        be `None`. This is how backend/ (a different storage engine, same
-        interface) reuses this class unchanged rather than needing its own copy
-        of the judging logic."""
+        """`clause_lookup`, if given, replaces the default sqlite-backed lookup
+        (`conn` can then be None) -- lets backend/ reuse this class unchanged."""
         self.conn = conn
         self.llm = llm
         self._clause_lookup = clause_lookup or (lambda standard_id, path: get_clause_by_path(self.conn, standard_id, path))
         self._schema = GroundingJudgeOutput.model_json_schema()
 
     def evaluate(self, generation_result: GenerationResult) -> JudgedAnswer:
-        """Full pipeline entry point: judges a generator's output end to end,
-        folding in Phase 3's already-rejected claims (verdicted unsupported without
-        another LLM call -- that fact is already known, re-asking would be waste)
-        alongside a fresh judgment of everything that passed Phase 3."""
+        """Judges a generator's output end to end; folds in Phase 3's already-rejected claims."""
         judged: list[JudgedClaim] = [
             JudgedClaim(claim=rc.claim, verdict="unsupported", reasoning=rc.reason, source="deterministic_check")
             for rc in generation_result.rejected_claims
@@ -98,10 +75,7 @@ class GroundingJudge:
         )
 
     def evaluate_claims(self, claims: list[Claim]) -> list[JudgedClaim]:
-        """Judge a list of claims directly -- the entry point for the adversarial
-        eval set (Phase 4 exit criteria), which needs to exercise deliberately
-        hallucinated citations and altered quotes that never went through a real
-        Generator/retriever pipeline at all."""
+        """Judge a list of claims directly; entry point for the adversarial eval set."""
         results: list[JudgedClaim | None] = [None] * len(claims)
         to_judge: list[tuple[int, Claim, str]] = []  # (index, claim, actual_clause_text)
 

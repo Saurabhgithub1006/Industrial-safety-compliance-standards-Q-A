@@ -1,9 +1,6 @@
 """Prompt construction for grounded generation.
-
-Per artifacts/system-arch-and-roadmap.md Sec 4.3: the generator is shown ONLY the
-retrieved chunks (no open-book knowledge for claims) and must emit the structured
-claims format, citing verbatim quotes, and explicitly flagging anything the
-retrieved chunks don't cover instead of inventing a plausible-sounding citation.
+Shows the generator only retrieved chunks; requires verbatim quotes and flags gaps.
+See artifacts/system-arch-and-roadmap.md Sec 4.3.
 """
 
 from __future__ import annotations

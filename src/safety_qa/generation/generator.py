@@ -1,23 +1,7 @@
 """Phase 3: grounded generation.
-
-Orchestrates retrieve -> prompt -> structured LLM call -> validate. Two layers of
-validation happen before a claim is trusted, deliberately redundant with each
-other:
-
-  1. Schema validation (Pydantic) -- catches a malformed *shape* (missing field,
-     wrong type). Retried once with the error fed back to the model; a second
-     failure raises rather than passing something malformed downstream.
-  2. Citation-grounding sanity check -- catches a well-*shaped* but WRONG claim:
-     citing a clause that was never actually shown to the model (a hallucinated
-     citation), or a "quote" that isn't actually a verbatim substring of the
-     clause it claims to cite. This is cheap, deterministic, and exact -- it is
-     NOT a substitute for Phase 4's Judge 1 (which checks whether the quote
-     actually *supports* the claim semantically, not just that it's real text).
-     Think of this as the floor Judge 1 builds on, not a replacement for it.
-
-Anything that fails either check is dropped into `rejected_claims` with a reason,
-never silently included -- this is the same "never ship an unreviewed claim"
-principle the arch doc applies to HITL, just enforced one step earlier.
+Orchestrates retrieve -> prompt -> structured LLM call -> validate.
+Two checks guard every claim: schema validation, then citation-grounding.
+See artifacts/changelogs.md CHG-20260907-03 for the design rationale.
 """
 
 from __future__ import annotations
@@ -37,8 +21,7 @@ _SCHEMA_NAME = "generated_answer"
 
 
 class GenerationError(Exception):
-    """The model failed to produce a schema-valid structured answer, even after
-    one retry with the validation error fed back to it."""
+    """Model failed to produce a schema-valid answer after one retry."""
 
 
 @dataclass

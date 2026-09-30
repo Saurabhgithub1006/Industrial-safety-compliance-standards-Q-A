@@ -1,10 +1,6 @@
 """Phase 5: final answer assembly.
-
-Combines Judge 1's `supported` claims (already trustworthy, no human needed) with
-HITL-cleared claims (approved or edited) from the review queue. Rejected and
-still-pending claims are held back -- never shipped as if they were a checked
-answer, per the arch doc's "never ship an unreviewed claim either way" principle
-(Sec 4.7).
+Combines Judge 1's supported claims with HITL-cleared claims from the review
+queue. Pending and rejected claims are held back. See CHG-20260911-07.
 """
 
 from __future__ import annotations
@@ -31,17 +27,9 @@ def assemble_final_answer(
     judged: JudgedAnswer, conn: sqlite3.Connection | None, claim_id_to_item_id: dict[str, int],
     get_item_fn=None,
 ) -> FinalAnswer:
-    """`claim_id_to_item_id` is the mapping returned by `store.enqueue_all()` for
-    this same judged answer -- passed explicitly rather than re-derived, since
-    dedup-on-insert means a claim's review_item may belong to an earlier query
-    (same claim text/citation, different claim_id), and re-deriving that mapping
-    later would be ambiguous.
-
-    `get_item_fn`, if given, is `(item_id) -> ReviewItem | None` and replaces the
-    default sqlite-backed lookup -- `conn` can then be `None`. Same pattern as
-    `GroundingJudge`'s `clause_lookup`: backend/ (a different storage engine, same
-    interface) reuses this function unchanged rather than needing its own copy of
-    the assembly rules."""
+    """`claim_id_to_item_id` is store.enqueue_all()'s mapping for this judged answer.
+    `get_item_fn`, if given, replaces the default sqlite-backed lookup (`conn` can
+    then be None) -- lets backend/ reuse this function unchanged."""
     lookup = get_item_fn or (lambda item_id: get_item(conn, item_id))
     claims: list[Claim] = [jc.claim for jc in judged.supported_claims]
     pending = 0
@@ -70,10 +58,7 @@ def assemble_final_answer(
 
 
 def _apply_edit(claim: Claim, item: ReviewItem) -> Claim:
-    """A human-edited claim: reviewer-supplied text/citation fields override the
-    original wherever they provided a replacement, original values carried
-    through otherwise. The human review IS the final check for this claim --
-    an edited claim is not re-run through Judge 1's automated grounding check."""
+    """Reviewer-supplied fields override the original; the human edit is the final check."""
     return Claim(
         claim_id=claim.claim_id,
         text=item.edited_text or claim.text,

@@ -1,5 +1,4 @@
-"""Phase 2 CLI: build the retriever from the ingested corpus and report recall@k
-against the golden eval set.
+"""CLI: build the retriever and report recall@k against the golden eval set.
 
     PYTHONPATH=src python -m safety_qa.retrieval.run_eval
 """

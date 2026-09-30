@@ -1,13 +1,6 @@
-"""A compact Porter stemmer -- zero dependency (no nltk), pure Python.
-
-Why this exists: exact-token lexical matching missed obvious morphological variants
-during Phase 2 tuning against the golden eval set -- a query asking "how often must
-it be periodically inspected" shares zero raw tokens with clause text that says
-"periodic inspection" ("periodically" != "periodic", "inspected" != "inspection"),
-even though they're clearly the same concept. BM25 and TF-IDF both need stemmed
-tokens to catch this; the classic Porter (1980) algorithm is what practically every
-lightweight IR system reaches for, and it's small enough to implement directly rather
-than pull in a dependency for it.
+"""A compact Porter stemmer, zero dependency (no nltk), pure Python.
+Unifies morphological variants like periodic/periodically for lexical matching.
+See artifacts/changelogs.md CHG-20260907-02.
 """
 
 from __future__ import annotations
@@ -167,8 +160,7 @@ def _step5(word: str) -> str:
 
 
 def stem(word: str) -> str:
-    """Reduce `word` to its Porter stem, e.g. 'periodically' -> 'period',
-    'inspection'/'inspected' -> 'inspect', 'withstanding' -> 'withstand'."""
+    """Reduce word to its Porter stem, e.g. 'periodically' -> 'period'."""
     word = word.lower()
     if len(word) <= 2:
         return word

@@ -1,8 +1,6 @@
 """Load the OSHA 1910.147 corpus into whatever database DATABASE_URL points at.
-Reuses safety_qa.ingestion.parser_osha_ecfr unchanged -- same parser, same source
-XML, same clause tree as the SQLite-backed CLI tool; only the storage target
-differs. Idempotent (safe to run on every deploy): replace_clauses() fully
-replaces the standard's clauses rather than accumulating duplicates.
+Reuses safety_qa.ingestion.parser_osha_ecfr unchanged. Idempotent: safe to run on
+every deploy.
 
     PYTHONPATH=src python -m backend.ingest
 """

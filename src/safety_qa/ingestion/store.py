@@ -1,9 +1,4 @@
-"""SQLite persistence for the ingestion data model (Phase 1).
-
-Mirrors `Standard` / `Clause` from artifacts/system-arch-and-roadmap.md Sec 5.
-SQLite, not Postgres, per the tech-stack choice for local dev (Sec 6) -- Phase 1
-has no concurrent-write or scale requirement that would justify anything heavier.
-"""
+"""SQLite persistence for the ingestion data model: Standard and Clause tables."""
 
 from __future__ import annotations
 
@@ -60,9 +55,7 @@ def upsert_standard(conn: sqlite3.Connection, standard: Standard) -> None:
 
 
 def replace_clauses(conn: sqlite3.Connection, standard_id: str, clauses: list[Clause]) -> None:
-    """Replace all clauses for `standard_id` with `clauses` -- ingestion is
-    idempotent: re-running it against an updated source fully replaces the prior
-    snapshot rather than accumulating stale rows alongside new ones."""
+    """Replace all clauses for standard_id. Idempotent: safe to re-run."""
     conn.execute("DELETE FROM clause WHERE standard_id = ?", (standard_id,))
     conn.executemany(
         """INSERT INTO clause
@@ -82,19 +75,14 @@ def replace_clauses(conn: sqlite3.Connection, standard_id: str, clauses: list[Cl
 
 
 def get_clause(conn: sqlite3.Connection, citation_key: str) -> Clause | None:
-    """The Phase 1 exit-criteria operation: resolve any citation key to its exact
-    clause, independent of ingestion order or file layout."""
+    """Look up one clause by its citation key."""
     row = conn.execute("SELECT * FROM clause WHERE citation_key = ?", (citation_key,)).fetchone()
     return _row_to_clause(row) if row else None
 
 
 def get_clause_by_path(conn: sqlite3.Connection, standard_id: str, clause_path: str) -> Clause | None:
-    """Resolve a clause by its (standard_id, clause_path) pair -- the form a
-    generated claim's citation actually carries (display path, not the internal
-    citation_key). Used by Judge 1 (Phase 4) to independently re-fetch a cited
-    clause straight from the corpus, deliberately not reusing whatever chunk object
-    the generator already had -- an independent lookup is the whole point of a
-    grounding check that "must not just trust the generator's framing."""
+    """Look up a clause by (standard_id, clause_path). Used by Judge 1 for an
+    independent re-fetch, not the generator's own chunk object."""
     row = conn.execute(
         "SELECT * FROM clause WHERE standard_id = ? AND clause_path = ?", (standard_id, clause_path)
     ).fetchone()

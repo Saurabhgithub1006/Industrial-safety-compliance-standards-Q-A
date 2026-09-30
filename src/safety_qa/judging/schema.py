@@ -1,12 +1,8 @@
-"""Judge 1's structured output contract.
-
-Verdict taxonomy is exactly the one defined in
+"""Judge 1's structured output contract. Verdict taxonomy per
 artifacts/system-arch-and-roadmap.md Sec 4.4:
-  - supported    -- quote entails the claim, quote is verbatim from the cited clause
-  - contradicted -- the cited clause says something different from (or the
-                     opposite of) the claim
-  - unsupported  -- cited clause exists but doesn't actually address the claim, or
-                     quote doesn't match verbatim, or no citation was given at all
+  - supported    -- quote entails the claim, quote is verbatim from the clause
+  - contradicted -- clause says something different from, or opposite of, the claim
+  - unsupported  -- clause doesn't address the claim, or the quote isn't verbatim
 """
 
 from __future__ import annotations
@@ -21,7 +17,7 @@ Verdict = Literal["supported", "contradicted", "unsupported"]
 class ClaimVerdict(BaseModel):
     claim_id: str
     verdict: Verdict
-    reasoning: str  # short justification -- this is what Judge 2 / a human reviewer reads
+    reasoning: str  # short justification; read by Judge 2 / a human reviewer
 
 
 class GroundingJudgeOutput(BaseModel):

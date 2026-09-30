@@ -1,12 +1,6 @@
 """SQLAlchemy Core table definitions for the deployed web app.
-
-Schema mirrors the existing SQLite stores (safety_qa.ingestion.store,
-safety_qa.review.store) as closely as possible, so the two systems stay
-conceptually interchangeable -- same fields, same meaning -- even though this one
-targets PostgreSQL in production. SQLAlchemy Core (not raw psycopg2, not the ORM)
-so the exact same table definitions and queries run against SQLite locally
-(zero-install testing) and PostgreSQL in production, with no per-dialect branches
-in application code -- only the DATABASE_URL differs.
+Mirrors the existing SQLite stores' schema so both storage backends stay
+interchangeable. See CHG-20260928-11.
 """
 
 from __future__ import annotations

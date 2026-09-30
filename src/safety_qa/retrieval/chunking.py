@@ -1,19 +1,6 @@
-"""Phase 2 chunking: turn stored Clauses into retrievable Chunks.
-
-Per artifacts/system-arch-and-roadmap.md Sec 5, `Chunk` is a distinct retrieval unit
-from `Clause` -- decoupled so a clause could later be split into multiple chunks (a
-very long clause) or several short clauses merged into one, without touching the
-citation model. At this corpus's scale every clause is already a small, well-scoped
-unit, so today it's a 1:1 projection; the seam is here for when that stops being true.
-
-Scoping decision: chunks are built from EVERY clause with non-empty text, including
-notes and the appendix -- excluding them from retrieval would make the system unable
-to answer real questions about exceptions and non-mandatory guidance that a user might
-legitimately ask about. `is_normative` rides along as metadata instead, so later
-phases (generation, judges) can characterize a note-derived answer correctly ("per a
-non-mandatory note...") rather than pretending it's a binding requirement. Filtering
-it out of *retrieval* would be answering a citation-labeling problem by making the
-system blind, which is the wrong trade.
+"""Turns stored Clauses into retrievable Chunks (currently a 1:1 projection).
+Includes notes and appendix text; is_normative flags them for later phases.
+Scoping rationale: artifacts/changelogs.md CHG-20260907-02.
 """
 
 from __future__ import annotations

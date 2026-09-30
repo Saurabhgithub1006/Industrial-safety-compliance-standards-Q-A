@@ -1,7 +1,5 @@
-"""Pydantic request/response models for the HTTP API -- separate from
-safety_qa.generation.schema's Claim/Citation, which are the internal pipeline
-contract, not the wire format. Keeping them distinct means the API's JSON shape
-can evolve without touching the pipeline's own structured-output schema.
+"""Pydantic request/response models for the HTTP API; separate from
+safety_qa.generation.schema's internal pipeline contract.
 """
 
 from __future__ import annotations

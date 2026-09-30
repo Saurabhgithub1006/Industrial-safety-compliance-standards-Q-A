@@ -1,14 +1,6 @@
 """Phase 5: Judge 2 -- escalation packet construction.
-
-Deterministic by design (Phase 5 kickoff decision D1): severity ranking and
-deduping are mechanical, not judgment calls, so this makes zero LLM calls. An
-LLM-written packet summary was considered and explicitly deferred as an optional
-later enhancement -- not needed for the queue to function.
-
-Severity ordering matches artifacts/system-arch-and-roadmap.md Sec 4.5:
-"contradicted outranks unsupported". (The arch doc's third tier, "no_citation",
-isn't a separate Judge 1 verdict in this implementation -- it's folded into
-"unsupported", see judging/schema.py's Verdict taxonomy.)
+Deterministic, zero LLM calls. Severity: contradicted outranks unsupported.
+See artifacts/system-arch-and-roadmap.md Sec 4.5 and CHG-20260911-07.
 """
 
 from __future__ import annotations
@@ -35,9 +27,7 @@ class EscalationPacket:
 
 
 def build_packets(judged: JudgedAnswer) -> list[EscalationPacket]:
-    """One packet per escalated claim -- everything Judge 1 didn't mark
-    `supported` -- sorted worst-first. `supported` claims never appear here; they
-    already passed and go straight to answer assembly without a human."""
+    """One packet per escalated claim, sorted worst-first. Supported claims never appear here."""
     packets = [
         EscalationPacket(
             claim_id=jc.claim.claim_id,

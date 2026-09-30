@@ -1,13 +1,10 @@
-"""Phase 4 CLI: run the adversarial eval set against a live Judge 1 and report
+"""CLI: run the adversarial eval set against a live Judge 1, report
 precision/recall/accuracy per verdict class.
 
     PYTHONPATH=src python -m safety_qa.judging.run_judge_eval
 
-Needs a real LLM API key in .env and the ingested corpus (data/processed/corpus.db)
--- see eval_set.py for why this can't be a pure-Python/CI-enforced check the way
-Phase 2's recall@k was. Provider defaults to Kimi (small/fast tier: kimi-k2.6) --
-set LLM_PROVIDER=anthropic in .env to use Claude Haiku instead; see
-llm_client.build_client().
+Needs an LLM API key in .env and the ingested corpus. Provider defaults to Kimi;
+see llm_client.build_client().
 """
 
 from __future__ import annotations

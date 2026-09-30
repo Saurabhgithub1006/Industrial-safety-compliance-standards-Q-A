@@ -1,10 +1,8 @@
-"""Phase 1 ingestion CLI: parse a source file and load it into the clause store.
+"""Ingestion CLI: parse a source file and load it into the clause store.
 
     python -m safety_qa.ingestion.run_ingest
 
-Currently wires up the one Phase 1 corpus source (OSHA 1910.147). Adding a second
-source means adding a `_INGEST_JOBS` entry with its own parser -- the store and
-canonicalization layers are already source-agnostic.
+Add a second standard by adding a _INGEST_JOBS entry.
 """
 
 from __future__ import annotations

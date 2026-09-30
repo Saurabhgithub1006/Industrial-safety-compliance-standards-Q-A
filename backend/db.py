@@ -1,7 +1,5 @@
-"""Database engine setup. `DATABASE_URL` decides everything -- point it at
-`sqlite:///./backend/dev.db` for local development/testing (no server needed) or
-`postgresql://...` in production (Fly Postgres sets this automatically once
-attached). No other code in `backend/` branches on which one is in use.
+"""Database engine setup. DATABASE_URL decides sqlite vs postgresql; no other
+code in backend/ branches on which one is in use. See CHG-20260928-11.
 """
 
 from __future__ import annotations
@@ -24,14 +22,11 @@ def get_database_url() -> str:
 
 def make_engine(database_url: str | None = None) -> Engine:
     url = database_url or get_database_url()
-    # check_same_thread=False: FastAPI can call from multiple threads; only
-    # meaningful for the SQLite dev path, ignored by the Postgres driver.
+    # check_same_thread=False lets FastAPI call from multiple threads; SQLite-only, ignored by Postgres.
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
     return create_engine(url, connect_args=connect_args)
 
 
 def init_schema(engine: Engine) -> None:
-    """Create every table if it doesn't already exist -- safe to call on every
-    app startup, same idempotence guarantee as the existing SQLite stores'
-    `CREATE TABLE IF NOT EXISTS`."""
+    """Creates every table if missing; safe to call on every app startup."""
     metadata.create_all(engine)

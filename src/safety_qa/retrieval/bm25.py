@@ -1,9 +1,5 @@
-"""Hand-rolled Okapi BM25 -- zero dependency, consistent with Phase 1's choice to
-keep ingestion free of external packages. This is the lexical/keyword leg of hybrid
-retrieval (Sec 4.1 of the arch doc): exact term and clause-number matches
-("1910.147(c)(4)") matter a lot in this domain, which is exactly what BM25 is good at
-and what a purely semantic search can under-weight.
-"""
+"""Hand-rolled Okapi BM25, zero dependency. The lexical/keyword leg of hybrid
+retrieval: catches exact term and clause-number matches."""
 
 from __future__ import annotations
 
@@ -17,8 +13,7 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 def tokenize(text: str) -> list[str]:
-    """Stemmed tokens -- so a query using 'periodically inspected' matches clause
-    text saying 'periodic inspection' (see stemming.py for why this matters here)."""
+    """Lowercase, stemmed tokens."""
     return [stem(t) for t in _TOKEN_RE.findall(text.lower())]
 
 
@@ -45,12 +40,11 @@ class BM25Index:
 
     def _idf(self, term: str) -> float:
         n_qi = self._df.get(term, 0)
-        # +1 smoothing keeps idf non-negative even for terms in most documents,
-        # matching the common Okapi BM25+ convention.
+        # +1 smoothing keeps idf non-negative (Okapi BM25+ convention).
         return math.log((self._n - n_qi + 0.5) / (n_qi + 0.5) + 1)
 
     def score_all(self, query: str) -> list[float]:
-        """BM25 score for every indexed document against `query`, in index order."""
+        """BM25 score per document, in index order."""
         scores = [0.0] * self._n
         if self._n == 0:
             return scores

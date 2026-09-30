@@ -1,12 +1,8 @@
-"""Ask a question and get a grounded, citation-checked answer (Phase 3).
+"""CLI: ask a question, print a grounded citation-checked answer.
 
     PYTHONPATH=src python -m safety_qa.generation.ask "what is a lockout device?"
 
-Requires a real LLM API key in .env -- this is the first phase in the project that
-actually calls an LLM. Everything before this point (ingestion, retrieval) is
-deterministic code with no API dependency; this is where that changes. Provider
-defaults to Kimi (set LLM_PROVIDER=anthropic in .env to use Claude instead) -- see
-llm_client.build_client().
+Requires an LLM API key in .env. Provider defaults to Kimi; see llm_client.build_client().
 """
 
 from __future__ import annotations

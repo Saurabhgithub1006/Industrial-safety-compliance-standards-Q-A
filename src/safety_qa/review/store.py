@@ -1,27 +1,14 @@
 """Phase 5+7: persistent review queue and verdict log.
+Separate database file from corpus.db -- the corpus is regenerable, this queue
+holds real human-decision history that must never be wiped.
 
-Deliberately a SEPARATE database file from corpus.db (see the Phase 5 plan): the
-corpus is regenerable from raw source via run_ingest and safe to rebuild any time;
-this queue holds real human-decision history that must never share a file with
-something that gets wiped/rebuilt. Tables, matching the arch doc's data model
-(Sec 5) plus the queue itself:
+  review_item        -- one row per escalated claim and its current status.
+  review_decision     -- append-only audit trail of every decision ever made.
+  judge_verdict_log   -- every Judge 1 verdict, supported or not (Phase 7).
 
-  review_item        -- one row per escalated claim, its current status, and (once
-                         edited) the reviewer's replacement text -- the queue itself.
-  review_decision     -- append-only audit trail of every decision ever made, even
-                         if a reviewer revisits an item; review_item.status always
-                         reflects the latest one.
-  judge_verdict_log   -- Phase 7 observability: every Judge 1 verdict ever produced,
-                         supported or not, tagged with the model/prompt version that
-                         made the call (matching the arch doc's `JudgeVerdict` table)
-                         -- so a future regression is traceable to what changed.
-                         `review_item` only ever held *escalated* claims; this is
-                         the only place a `supported` verdict gets a permanent record.
-
-Dedup on insert: if a pending item already exists for the same (standard_id,
-clause, claim_text), a new escalation is merged into it rather than creating a
-near-duplicate row -- per Sec 4.5, "batches/dedupes so a human reviewer sees one
-packet per claim, ranked by severity, not a firehose."
+Dedup on insert: a pending item for the same (standard_id, clause, claim_text)
+absorbs a new escalation instead of duplicating it.
+See artifacts/changelogs.md CHG-20260911-07 and CHG-20260912-09.
 """
 
 from __future__ import annotations
@@ -125,10 +112,7 @@ def connect(db_path: str) -> sqlite3.Connection:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """CREATE TABLE IF NOT EXISTS doesn't retroactively add columns to a
-    review_item table that already existed under an older schema (e.g. a queue
-    file created before judge1_source was added) -- add any missing columns
-    without touching existing rows' data."""
+    """Adds columns missing from an older schema version, without touching existing rows."""
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(review_item)")}
     if "judge1_source" not in existing:
         conn.execute("ALTER TABLE review_item ADD COLUMN judge1_source TEXT NOT NULL DEFAULT 'llm_judge'")
@@ -136,12 +120,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
 
 
 def enqueue_all(conn: sqlite3.Connection, packets: list[EscalationPacket]) -> dict[str, int]:
-    """Insert each packet as a new pending review_item, unless a pending item
-    already exists for the same (standard_id, clause, claim_text) -- in which case
-    the packet is merged into that existing item instead. Returns claim_id ->
-    review_item.id for every packet passed in, so a caller can always resolve
-    "this claim from this answer" to the right item regardless of whether it was
-    newly inserted or deduped against an older one."""
+    """Insert each packet as pending, or merge into a matching pending item.
+    Returns claim_id -> review_item.id for every packet passed in."""
     result: dict[str, int] = {}
     for packet in packets:
         existing = conn.execute(
@@ -215,10 +195,7 @@ def record_decision(
 
 
 def log_verdict(conn: sqlite3.Connection, judged_claim, query: str) -> None:
-    """Phase 7 observability: record one Judge 1 verdict, whatever it was --
-    `supported` included. Takes a `JudgedClaim` (safety_qa.judging.grounding_judge)
-    by duck typing rather than importing the class, to avoid a hard dependency
-    from the storage layer on the judging package's internals."""
+    """Records one Judge 1 verdict, supported included, as a JudgedClaim by duck typing."""
     conn.execute(
         """INSERT INTO judge_verdict_log
              (claim_id, query, verdict, reasoning, source, model, prompt_version, logged_at)

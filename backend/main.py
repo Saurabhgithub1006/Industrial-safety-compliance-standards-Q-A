@@ -1,7 +1,6 @@
-"""The deployed web app -- wraps the existing pipeline (retrieval, generation,
-Judge 1, Judge 2/HITL) behind an HTTP API, with PostgreSQL replacing the CLI
-tools' SQLite files as the storage backend. None of the core pipeline logic is
-reimplemented here; this module is wiring, not a second copy of the system.
+"""The deployed web app: wraps the existing pipeline behind an HTTP API, with
+PostgreSQL replacing the CLI tools' SQLite files. Wiring only, no pipeline logic
+reimplemented. See CHG-20260928-11.
 
     PYTHONPATH=src:. uvicorn backend.main:app --host 0.0.0.0 --port 8080
 """
@@ -37,12 +36,12 @@ async def lifespan(app: FastAPI):
     engine = make_engine()
     init_schema(engine)
     if corpus_store.corpus_is_empty(engine, _STANDARD_ID):
-        run_ingest()  # first boot against a fresh database: ingest automatically
+        run_ingest()  # first boot against an empty database: auto-ingest
     app.state.engine = engine
 
     clauses = corpus_store.list_clauses(engine, _STANDARD_ID)
     chunks = build_chunks(clauses)
-    app.state.retriever = Retriever(chunks)  # built once -- loads the embedding model a single time, not per request
+    app.state.retriever = Retriever(chunks)  # built once at startup, not per request
 
     yield
 
@@ -64,10 +63,8 @@ def health() -> HealthResponse:
 
 @app.post("/api/ask", response_model=AskResponse)
 def ask(request: AskRequest) -> AskResponse:
-    """The full pipeline: retrieve -> generate -> judge -> escalate -> assemble.
-    Same policy as review/pipeline.py's default mode: ships supported +
-    already-cleared claims immediately, holds back anything newly flagged for a
-    human rather than blocking the request on it."""
+    """Full pipeline: retrieve -> generate -> judge -> escalate -> assemble.
+    Ships supported/cleared claims immediately; holds back newly flagged ones."""
     engine = app.state.engine
     retriever: Retriever = app.state.retriever
 

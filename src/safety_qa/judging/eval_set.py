@@ -1,20 +1,6 @@
-"""Phase 4 exit criteria: an adversarial eval set for Judge 1, per the roadmap --
-"deliberately wrong citations, subtly altered quotes, contradicted claims" -- with
-judge precision/recall measured against it.
-
-Honesty note this eval set forces: unlike Phase 2's recall@k (pure Python, testable
-in CI with zero external dependencies), the "contradicted" verdict fundamentally
-requires semantic judgment -- there is no deterministic way to verify a judge
-correctly identifies that a claim misrepresents a clause without asking a real LLM
-whether it caught it. So this eval set is exercised by run_judge_eval.py against a
-live model (needs ANTHROPIC_API_KEY), not enforced as a pytest threshold the way
-Phase 2's was. tests/test_judging.py still covers the deterministic layer
-(hallucinated citations, non-verbatim quotes) and the plumbing (batching, retry,
-claim_id mapping) with zero API dependency -- what's untestable without a live
-model is specifically the semantic supported-vs-contradicted distinction.
-
-Every case cites a real clause from the ingested OSHA-1910.147 corpus, verified
-against the actual stored text (see data/processed/corpus.db).
+"""Adversarial eval set for Judge 1: deliberately wrong citations, altered
+quotes, contradicted claims. Exercised live by run_judge_eval.py, not a pytest
+threshold. See artifacts/changelogs.md CHG-20260907-04.
 """
 
 from __future__ import annotations
@@ -132,8 +118,7 @@ ADVERSARIAL_SET: list[AdversarialCase] = [
 
 
 def precision_recall(predicted: list[Verdict], expected: list[Verdict]) -> dict:
-    """Per-class precision/recall plus overall accuracy, for the run_judge_eval.py
-    report. `predicted`/`expected` must be the same length and order."""
+    """Per-class precision/recall plus accuracy. predicted/expected must align."""
     assert len(predicted) == len(expected)
     labels: list[Verdict] = ["supported", "contradicted", "unsupported"]
     report = {}

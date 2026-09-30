@@ -1,9 +1,6 @@
-"""The structured claims contract from artifacts/system-arch-and-roadmap.md Sec 2:
-the generator never returns free-text prose. It returns discrete, independently
-checkable claims, each with a citation and a verbatim quote -- or an explicit
-unsupported marker when nothing in the corpus backs part of the question. This is
-what makes automatic grounding-checking (Phase 4's Judge 1) possible at all: you
-can't fact-check a paragraph, but you can fact-check a (claim, quote, clause) triple.
+"""Structured claims contract (Pydantic). The generator returns discrete,
+checkable claims with citations, never free-text prose.
+See artifacts/system-arch-and-roadmap.md Sec 2.
 """
 
 from __future__ import annotations
@@ -29,7 +26,5 @@ class Claim(BaseModel):
 class GeneratedAnswer(BaseModel):
     query: str
     claims: list[Claim] = Field(default_factory=list)
-    # Parts of the question the retrieved chunks don't actually answer -- populated
-    # instead of inventing a plausible-sounding citation. An empty list here is a
-    # claim in itself ("everything asked was covered"), not just an unfilled default.
+    # Parts of the question the corpus doesn't answer; empty list means "fully covered".
     unsupported_aspects: list[str] = Field(default_factory=list)

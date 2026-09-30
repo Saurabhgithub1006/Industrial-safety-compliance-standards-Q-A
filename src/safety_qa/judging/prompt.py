@@ -1,20 +1,13 @@
 """Prompt construction for Judge 1 (Grounding & Contradiction Judge).
-
-Deliberately a separate system prompt from generation/prompt.py, run in its own LLM
-call with no shared context -- per Sec 4.4: "an independent LLM call (separate
-prompt/context from the generator -- it must not just trust the generator's
-framing)". The judge is shown ONLY: the claim, its cited quote, and the actual
-clause text freshly re-fetched from the corpus (never the generator's own copy of
-it) -- it never sees the generator's reasoning or the original question.
+Separate system prompt and LLM call from generation/prompt.py; shown only the
+claim, its quote, and the freshly re-fetched clause text. See Sec 4.4.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Bump this whenever SYSTEM_PROMPT's wording changes meaningfully -- Phase 7
-# (observability) logs this alongside every LLM-judged verdict specifically so a
-# future regression is traceable to which prompt version produced which call.
+# Bump when SYSTEM_PROMPT's wording changes; logged with every LLM-judged verdict.
 JUDGE_PROMPT_VERSION = "v1"
 
 SYSTEM_PROMPT = """You are an independent fact-checker verifying claims made about \

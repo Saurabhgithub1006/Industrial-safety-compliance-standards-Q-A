@@ -1,8 +1,6 @@
-"""Corpus persistence for the web app -- same shape as
-safety_qa.ingestion.store, targeting the portable engine from db.py instead of a
-raw sqlite3.Connection. Returns the exact same `Clause`/`Standard` dataclasses
-the rest of the codebase (Retriever, GroundingJudge, Generator) already knows how
-to use, so none of that logic needed to change at all.
+"""Corpus persistence for the web app: same shape as safety_qa.ingestion.store,
+targeting the portable engine from db.py. Returns the same Clause/Standard
+dataclasses the rest of the codebase already uses. See CHG-20260928-11.
 """
 
 from __future__ import annotations
@@ -27,8 +25,7 @@ def upsert_standard(engine: Engine, s: Standard) -> None:
 
 
 def replace_clauses(engine: Engine, standard_id: str, clauses: list[Clause]) -> None:
-    """Idempotent, same as the SQLite version: fully replaces this standard's
-    clauses rather than accumulating stale rows alongside new ones."""
+    """Idempotent: fully replaces this standard's clauses, same as the SQLite version."""
     with engine.begin() as conn:
         conn.execute(delete(clause_table).where(clause_table.c.standard_id == standard_id))
         if clauses:

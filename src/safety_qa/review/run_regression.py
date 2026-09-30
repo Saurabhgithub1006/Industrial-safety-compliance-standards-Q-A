@@ -1,12 +1,9 @@
-"""Phase 6 CLI: replay every human-overturned case through a fresh Judge 1 call,
-and report the judge-override-rate metric.
+"""CLI: replay every human-overturned case through a fresh Judge 1 call, report
+the judge-override-rate metric.
 
     PYTHONPATH=src python -m safety_qa.review.run_regression
 
-Needs a real LLM API key and both databases (data/processed/corpus.db,
-data/processed/review_queue.db) -- see regression.py's docstring for why the
-replay itself can't be a pure-Python/CI-enforced check the same way Phase 2's
-recall@k was: verifying an LLM's judgment needs a live model.
+Needs an LLM API key and both databases. See regression.py and CHG-20260911-08.
 """
 
 from __future__ import annotations
@@ -45,11 +42,7 @@ def run(corpus_db_path: str = _DEFAULT_CORPUS_DB, review_db_path: str = _DEFAULT
         print("\nno overturned cases to replay -- regression suite is empty until a human overturns a verdict")
         return
 
-    # Only llm_judge-sourced verdicts can drift across prompt/model changes --
-    # a deterministic_check catch (hallucinated citation, non-verbatim quote) is a
-    # pure string/lookup check that will reproduce identically every time unless
-    # the corpus itself changes, so replaying it through the model tests nothing
-    # and would just spend an API call for no signal.
+    # Only llm_judge-sourced verdicts can drift; deterministic checks can't, so they're skipped.
     replayable = [c for c in cases if c.judge1_source == "llm_judge"]
     deterministic_only = [c for c in cases if c.judge1_source != "llm_judge"]
 

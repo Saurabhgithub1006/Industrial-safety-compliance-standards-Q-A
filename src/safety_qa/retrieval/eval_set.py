@@ -1,12 +1,5 @@
-"""Phase 2 exit criteria: recall@k on a golden question -> clause set.
-
-Every question below was written against verified clause text pulled directly from
-the ingested corpus.db (not guessed) -- see the parser output for exact wording.
-Most map to exactly one clause; a few legitimately admit more than one correct
-citation (e.g. a question a human could reasonably answer from either of two
-adjacent clauses), so `expected_citation_keys` is a tuple and a hit counts if ANY of
-them appears in the top-k.
-"""
+"""Golden question -> clause set, for recall@k. Questions verified against
+real ingested clause text, not guessed."""
 
 from __future__ import annotations
 
@@ -88,8 +81,7 @@ GOLDEN_SET: list[EvalCase] = [
 
 
 def recall_at_k(retriever: Retriever, cases: list[EvalCase], k: int) -> tuple[float, list[dict]]:
-    """Fraction of `cases` where at least one expected citation key appears in the
-    top-k retrieved chunks, plus a per-case breakdown for debugging misses."""
+    """Fraction of cases with an expected key in the top-k, plus per-case detail."""
     hits = 0
     details = []
     for case in cases:

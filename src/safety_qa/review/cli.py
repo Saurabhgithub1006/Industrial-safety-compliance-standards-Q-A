@@ -2,15 +2,8 @@
 
     PYTHONPATH=src python -m safety_qa.review.cli --reviewer alice
 
-Per the Phase 5 kickoff decision (D2): a CLI, consistent with the project's
-existing ask.py/run_eval.py pattern, rather than a new web-UI dependency. The
-decision-applying logic (`apply_decision`) is deliberately separate from the
-`input()`-driven loop so it's unit-testable without simulating stdin.
-
-Phase 7 hardening: reviewer identity is required, never silently defaulted to a
-shared string -- a review decision is an audit-relevant action (Sec 4.6/Sec 6 of
-the arch doc), and every prior version of this CLI let every reviewer decide
-anonymously as "local-reviewer", making per-person accountability impossible.
+Reviewer identity is required, never silently defaulted.
+See artifacts/changelogs.md CHG-20260911-07 and CHG-20260912-09.
 """
 
 from __future__ import annotations
@@ -34,10 +27,7 @@ def apply_decision(
     edited_text: str | None = None,
     edited_quote: str | None = None,
 ) -> None:
-    """The testable core: validates and records one reviewer decision.
-    `store.record_decision` does the actual validation/persistence -- this
-    wrapper exists as the CLI's stable entry point, independent of how the
-    interactive loop below happens to gather its arguments."""
+    """Testable core: validates and records one reviewer decision."""
     record_decision(
         conn, item.id, reviewer_id, action, rationale,
         edited_text=edited_text, edited_quote=edited_quote,
@@ -54,10 +44,7 @@ def _print_item(item: ReviewItem) -> None:
 
 
 def resolve_reviewer_id(argv: list[str]) -> str:
-    """Never silently default to a shared identity: `--reviewer NAME` on the
-    command line, or an interactive prompt that keeps asking until a non-empty
-    identity is given. Raises nothing -- there is always a way out (provide the
-    flag, or type a name), so this only blocks on truly empty input."""
+    """Never defaults silently: --reviewer NAME, or keeps prompting until non-empty."""
     if "--reviewer" in argv:
         idx = argv.index("--reviewer")
         if idx + 1 < len(argv) and argv[idx + 1].strip():
@@ -69,9 +56,7 @@ def resolve_reviewer_id(argv: list[str]) -> str:
 
 
 def review_items_interactively(conn: sqlite3.Connection, items: list[ReviewItem], reviewer_id: str) -> None:
-    """The interactive loop over a given list of items -- factored out so
-    `pipeline.py`'s `--wait` mode can drive it over just the items a single run
-    just escalated, without duplicating this loop."""
+    """Interactive decision loop over a list of items; reused by pipeline.py's --wait mode."""
     for item in items:
         _print_item(item)
         while True:

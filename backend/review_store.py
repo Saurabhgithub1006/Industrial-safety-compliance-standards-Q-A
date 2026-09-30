@@ -1,9 +1,6 @@
-"""Review queue persistence for the web app -- same behavior as
-safety_qa.review.store (dedup-on-insert against pending items only, append-only
-decision audit trail, verdict logging), targeting the portable engine from db.py.
-Reuses the existing `ReviewItem` / `VerdictLogEntry` dataclasses so
-`safety_qa.review.assembly.assemble_final_answer()` and `safety_qa.review.cli`'s
-decision-printing code work against either storage backend unchanged.
+"""Review queue persistence for the web app: same behavior as
+safety_qa.review.store, targeting the portable engine from db.py. Reuses the
+existing ReviewItem/VerdictLogEntry dataclasses. See CHG-20260928-11.
 """
 
 from __future__ import annotations
