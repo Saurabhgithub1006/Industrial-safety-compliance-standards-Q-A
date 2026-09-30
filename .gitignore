@@ -16,3 +16,6 @@ backend/dev.db
 # editor-local history (VS Code local-history extension) -- can contain
 # timestamped snapshots of .env; never commit
 .history/
+
+# working notes / internal process docs -- not part of the shipped project
+artifacts/
