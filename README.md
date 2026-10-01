@@ -36,15 +36,15 @@ Build and demonstrate a working system that:
 
 | Stage | What it does |
 |---|---|
-| **Corpus scoping** | Restrict to legitimately public, clause-numbered excerpts (OSHA 1910/1926, public IEC/ISO front-matter, freely-viewable NFPA editions, etc.) — full paywalled standard text is explicitly out of scope. See the architecture doc for the licensing breakdown. |
-| **Clause-aware ingestion** | Parse and chunk source documents at clause boundaries, preserving `standard → clause path → text` structure so every chunk is independently citable. |
-| **Hybrid retrieval** | BM25 (for literal clause-number/term matches) + dense embeddings (for semantic recall), combined via reciprocal rank fusion. |
-| **Grounded generation** | LLM answers only from retrieved chunks, output constrained to a structured schema: `{claim, citation, verbatim quote}` or `unsupported`. |
-| **Judge 1 — Grounding & Contradiction** | Independent LLM call re-checks each claim's quote against the actual corpus clause text; verdict is `supported` / `contradicted` / `unsupported`. |
-| **Judge 2 — Escalation** | Packages every non-`supported` verdict into a ranked, de-duplicated review item for a human reviewer. |
+| **Corpus scoping** |The system will only use **publicly available, clause-numbered excerpts**, such as OSHA 1910/1926 and freely available IEC/ISO or NFPA content. Full paywalled standards are outside the project scope. The licensing details are covered in the architecture document.|
+| **Clause-aware ingestion** | Source documents are divided by clause boundaries while keeping the standard, clause path, and text together. This makes each chunk easy to cite independently. |
+| **Hybrid retrieval** |Use BM25 for exact clause and keyword matches, and dense embeddings for semantic matches. Combine both results using Reciprocal Rank Fusion (RRF) for better retrieval.|
+| **Grounded generation** | The LLM answers only from the retrieved chunks and follows a fixed structure: **claim, citation, and verbatim quote**, or **unsupported** when no evidence is found.|
+| **Judge 1 : Grounding & Contradiction** | An independent LLM checks each claim against the original clause text and marks it as **supported, contradicted, or unsupported**.|
+| **Judge 2 : Escalation** | Any claim that is not **supported** is grouped into a ranked, duplicate-free review item for human review. |
 | **HITL review** | Human approves, edits, or rejects each flagged claim; every decision is logged for audit and feeds the eval/regression set. |
 | **Answer assembly** | Final answer = judge-supported claims + human-cleared claims only, each still carrying its citation. |
-| **Evaluation** | Retrieval recall@k, citation precision, judge precision/recall on an adversarial set, and refusal correctness are tracked as first-class metrics. |
+| **Evaluation** |The system tracks retrieval recall@k, citation precision, judge precision/recall, and refusal accuracy using an adversarial test set. |
 
 ## Project repo
 
@@ -117,9 +117,7 @@ Industrial-safety-compliance-standards-Q-A/
     └── test_backend.py
 ```
 
-This structure now covers the full roadmap in
-[`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md) — that
-document is the source of truth for what gets built in what order.
+
 
 **Status:**
 - **Phase 1** (clause-aware ingestion) — done. 135 clauses of 29 CFR 1910.147 parsed
