@@ -120,124 +120,20 @@ Industrial-safety-compliance-standards-Q-A/
 
 
 **Status:**
-- **Phase 1** (clause-aware ingestion) — done. 135 clauses of 29 CFR 1910.147 parsed
-  from raw eCFR XML into a queryable SQLite store, each independently addressable by a
-  canonical citation key (`OSHA-1910.147#(c)(4)(i)`), with notes/appendix content
-  correctly marked non-normative.
-  Run: `PYTHONPATH=src python -m safety_qa.ingestion.run_ingest`
-- **Phase 2** (hybrid retrieval) — done. BM25 (hand-rolled, stemmed) + **e5-base-v2**
-  neural sentence embeddings (local, via `sentence-transformers` — no API key,
-  runs on GPU if available) fused via reciprocal rank fusion. **recall@5 = 100%**
-  (15/15) on the golden set, up from 93.3% under the original TF-IDF/LSA semantic
-  leg — that earlier choice was made when a real embedding model looked like it'd
-  need either an API key or a heavy install; once torch/transformers turned out to
-  already be present with GPU support, the trade-off no longer held, so the leg was
-  swapped (see CHG-20260911-06 in `artifacts/changelogs.md`). The one previously
-  documented limitation (a definition losing to other definitions that
-  cross-reference it, on pure lexical frequency) is resolved under real embeddings.
-  Run: `PYTHONPATH=src python -m safety_qa.retrieval.run_eval`
-  Inspect raw retrieval for any question: `PYTHONPATH=src python -m safety_qa.retrieval.ask "your question"`
-- **Phase 3** (grounded generation) — done. First phase that calls an actual LLM
-  (Claude, via structured tool-use output). The generator only sees retrieved
-  clauses (no open-book knowledge) and must emit discrete, independently-checkable
-  claims — each with a citation and a verbatim quote — or explicitly flag anything
-  the corpus doesn't cover in `unsupported_aspects`, instead of guessing. Every claim
-  is then re-checked deterministically before being trusted: cited clause must
-  actually be among what was retrieved (catches hallucinated citations), and the
-  quote must be an exact substring of that clause's text (catches paraphrasing
-  disguised as quoting) — anything that fails either check is dropped into
-  `rejected_claims` with a reason, never silently shown as an answer. This is a
-  cheap sanity floor, not a replacement for Phase 4's semantic grounding judge.
-  All 9 tests run against a fake, deterministic LLM client — no network call, no API
-  key needed for CI.
-  Real usage needs `export ANTHROPIC_API_KEY=...`, then:
-  `PYTHONPATH=src python -m safety_qa.generation.ask "your question"`
-- **Phase 4** (Judge 1 — Grounding & Contradiction) — done. Two layers, matching the
-  arch doc exactly: (1) an independent deterministic re-check — every claim's cited
-  clause is re-fetched straight from the corpus by its own DB lookup (never reusing
-  Phase 3's chunk objects) and its quote re-verified verbatim from scratch; a claim
-  failing this is `unsupported` with zero LLM calls. (2) everything that clears step 1
-  goes into one **batched** LLM call (cost-conscious per the arch doc's Sec 4.4 note)
-  asking the question string-matching can't: does the clause actually *entail* the
-  claim, or does the claim misrepresent/contradict it (e.g. clause says "at least
-  annually", claim says "monthly" — verbatim-valid quote, wrong claim).
-  All 10 tests cover the deterministic layer and the LLM-layer plumbing (batching,
-  claim_id-based response mapping, retry-once-then-fail) against a fake client — zero
-  API key needed for CI. What genuinely can't be tested without a live model: whether
-  the judge actually *catches* a contradiction. For that, `judging/eval_set.py` has a
-  9-case adversarial set (correct claims, contradicted claims, hallucinated citations,
-  altered quotes) with expected verdicts; run it against a real model with
-  `export ANTHROPIC_API_KEY=...` then `PYTHONPATH=src python -m safety_qa.judging.run_judge_eval`
-  for a precision/recall report — this one isn't CI-enforced the way Phase 2's recall@k
-  is, since there's no dependency-free way to check semantic judgment quality.
-- **Phase 5** (Judge 2 — Escalation + HITL review) — done. Judge 2 makes zero LLM
-  calls (a deliberate choice): severity-ranking (`contradicted` outranks
-  `unsupported`) and deduping a flagged claim against an already-pending item are
-  mechanical, not judgment calls. Escalated claims go into a **separate** SQLite
-  queue (`review_queue.db`, not `corpus.db` — the queue holds real human-decision
-  history that must never share a file with something `run_ingest` can rebuild).
-  A CLI (`review/cli.py`) lets a reviewer approve/edit/reject each item with a
-  required rationale, fully audited (every decision logged, `review_item.status`
-  always reflects the latest one). Final-answer assembly combines Judge
-  1's `supported` claims with HITL-cleared ones — pending and rejected claims are
-  held back, never shown as if they were checked. Validated live (not just
-  against fakes): a real Kimi Judge 1 call correctly flagged a deliberately wrong
-  claim as `contradicted`, Judge 2 built the escalation packet, the claim was
-  correctly excluded before review and correctly excluded again after a simulated
-  reject decision. 16 new tests, all deterministic (no LLM dependency for this
-  phase at all).
-  Full loop: `PYTHONPATH=src python -m safety_qa.review.pipeline "your question"`
-  Work the queue: `PYTHONPATH=src python -m safety_qa.review.cli`
-- **Phase 6** (feedback & regression harness) — done. `review/regression.py`
-  extracts every case where a human overturned Judge 1 (approved or edited a
-  claim Judge 1 had flagged) and computes the judge-override rate — how often a
-  human disagreed with Judge 1, the real-world precision metric. `run_regression.py`
-  replays each overturned case through a fresh Judge 1 call to catch prompt
-  drift ("this exact claim must not come back wrongly flagged"), but **only**
-  for cases Judge 1's own LLM judgment originally caught — a case caught by the
-  deterministic layer (hallucinated citation, non-verbatim quote) is a pure
-  string/lookup check that will reproduce identically forever unless the corpus
-  itself changes, so replaying it through a model tests nothing and would just
-  spend an API call for no signal. This distinction (`judge1_source` on every
-  review item) was added mid-build after running real data through the system
-  and finding the first version of the replay logic would have mislabeled a
-  deterministic catch as a "regression."
-  Seeded with real (not synthetic) review history to build this against:
-  3 organic real questions produced zero escalations — a real, honest signal
-  Judge 1 was already precise — so 3 deliberately-wrong claims were run through
-  the live pipeline instead; 2 were genuinely correct catches (confirmed via
-  reject), 1 was a genuine transcription error in the quote (fixed via edit) —
-  giving a real override rate of 33% (1/3) to validate the harness against.
-  6 new tests, all deterministic (the pure extraction/metric logic; the live
-  replay is validated manually, same honest limitation as Phase 4's eval).
-  Run: `PYTHONPATH=src python -m safety_qa.review.run_regression`
-- **Phase 7** (hardening) — done, scoped to the 3 items the roadmap actually names
-  (not a vague polish pass):
-  1. **Observability** — a new `judge_verdict_log` table (matching the arch doc's
-     `JudgeVerdict` data model exactly) records every Judge 1 verdict, `supported`
-     included — `review_item` only ever held escalated claims, so this is the only
-     permanent record of a `supported` verdict. Each entry is tagged with the model
-     and prompt version (`judging/prompt.py`'s `JUDGE_PROMPT_VERSION`) that produced
-     it, `None` for deterministic-layer catches (no model was called). Validated
-     live: a real run logged all 6 verdicts with `model=kimi-k2.6`,
-     `prompt_version=v1`.
-  2. **Reviewer identity is required, not defaulted** — `review/cli.py` no longer
-     silently assigns every reviewer the same `"local-reviewer"` string; it requires
-     `--reviewer NAME` or keeps prompting interactively until given a non-empty
-     identity. A review decision is audit-relevant; it should never be anonymous.
-  3. **`--wait` opt-in** on `review/pipeline.py` — reviews newly-escalated claims
-     inline, in the same run, before returning a final answer, instead of always
-     shipping partial and leaving items for a later `review/cli.py` session.
-     Reuses `cli.py`'s decision loop rather than duplicating it.
-  10 new tests, all deterministic. One honest gap, stated plainly rather than
-  glossed over: `--wait`'s exact end-to-end wiring (does a real escalation from
-  *this run* actually reach the inline review loop and get reassembled correctly)
-  wasn't exercised live — forcing a real escalation on demand isn't reliably
-  controllable (the generator has proven consistently well-grounded across every
-  real run so far) without spending real API budget hunting for one against a
-  3 RPM rate limit. Every piece it's built from (arg parsing, reviewer resolution,
-  the decision loop, answer assembly) is independently unit-tested and reused, not
-  duplicated — but that's not the same claim as "the wiring was observed working."
+- Phase 1: Clause-Aware Ingestion
+The system parses 135 OSHA 1910.147 clauses from eCFR XML and stores them in a queryable database. Each clause has a unique citation key, making it easy to retrieve and cite the exact safety requirement.    Pasted text
+Phase 2: Hybrid Retrieval
+The system combines BM25 keyword search with e5-base-v2 embeddings for semantic search. Both results are combined using Reciprocal Rank Fusion (RRF). The system achieved 100% recall@5 (15/15) on the test set.    Pasted text
+Phase 3: Grounded Generation
+The LLM generates answers only from the retrieved clauses. Each claim must include a citation and a verbatim quote. If the available sources do not support a claim, it is marked as unsupported instead of generating a guess. The system also checks that the citation and quote actually match the retrieved clause.    Pasted text
+Phase 4: Grounding and Contradiction Check
+An independent judge checks each generated claim against the original clause. It verifies whether the clause actually supports the claim and identifies incorrect or contradictory statements. Each claim receives one of three verdicts: supported, contradicted, or unsupported.    Pasted text
+Phase 5: Human Review
+Claims that are contradicted or unsupported are sent to a separate review queue. A human reviewer can approve, edit, or reject these claims, with every decision recorded for auditing. Only supported or human-approved claims are included in the final answer.    Pasted text
+Phase 6: Feedback and Regression Testing
+The system records cases where human reviewers disagree with the judge and uses them for regression testing. This helps identify changes in judge performance and prevent previously detected issues from appearing again.    Pasted text
+Phase 7: System Hardening
+The final phase improved system monitoring and auditing. Judge decisions are logged with the model and prompt version, reviewer identity is required, and an optional review mode allows newly flagged claims to be reviewed before the final answer is returned.
 
 **Post-roadmap optimizations** (2026-09-16) — a targeted review of the finished
 system found 3 concrete, worth-fixing gaps rather than a vague "polish" pass:
