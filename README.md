@@ -1,60 +1,27 @@
 # Industrial Safety Compliance Standards Q&A
 
-A citation-grounded RAG system for functional-safety and machine-safety standards used
-in industrial automation (IEC/ISO/DIN-class standards such as IEC 61508, IEC 62061,
-ISO 13849-1, and their US-analogues like OSHA 1910). It answers *"what are the safety
-requirements for X"* with precise clause-number citations, refuses to answer when no
-source clause supports the claim, and routes every uncertain or contradicted claim
-through an automated LLM-judge check before a human ever needs to look at it and to a
-human review queue when the judge itself is unsure.
+A citation-based RAG system for functional and machine safety standards in industrial automation (IEC/ISO/DIN-class standards such as IEC 61508, IEC 62061,
+ISO 13849-1, and their US-analogues like OSHA 1910). It provides safety requirements with exact clause citations, avoids unsupported answers, and sends uncertain or conflicting claims for automated checking and human review.
 
 ## Problem statement
 
-Industrial automation engineers (control system design, functional safety, machine
-safeguarding the kind of work that sits behind PLCs, drives, and safety
-relays/controllers) constantly need to answer questions like *"what's required for an
-emergency stop category on this machine?"* or *"what SIL/PL does this safety function
-need?"*. The source of truth IEC/ISO/DIN safety standards is long, cross-referenced,
-often paywalled in full, and getting the clause wrong has real consequences: a missed
-or misapplied requirement is a safety defect, not a cosmetic bug.
+Industrial automation engineers often need quick answers about safety requirements for machines, PLCs, drives, and safety controllers. Safety standards are long, cross-referenced, and sometimes paywalled, and using the wrong clause can cause serious safety issues.
 
-A generic LLM chatbot is the wrong tool here: it will answer fluently and confidently
-whether or not it actually knows the clause, and a wrong-but-confident answer in this
-domain is worse than no answer. The problem this project solves is not "can an LLM
-answer safety questions" it's **"can we build a system that only ever answers with a
-claim it can point to a real clause for, and that catches itself (and gets a human to
-catch it) when it can't."**
+A generic LLM may give confident but incorrect answers. This project focuses on providing answers only when they are supported by real standard clauses, while sending uncertain answers for automated and human review.
 
 ## Introduction to the problem and methodology
 
-Retrieval-Augmented Generation (RAG) is a natural fit for regulated, citation-heavy
-domains because it separates *what the model knows* from *what the source document
-says*, and lets you check the model's output against the latter mechanically. But a
-naive RAG pipeline (retrieve chunks → ask the LLM to answer with the chunks in context)
-still lets the model paraphrase loosely, cite the wrong clause, or quietly drop the
-"I don't know" case in favor of a plausible-sounding guess. None of that is acceptable
-in a safety-compliance setting.
+RAG is useful for safety standards because it connects the LLM’s answers directly to source documents. However, a basic RAG system can still give wrong clauses or make unsupported guesses.
 
-This project's methodology treats grounding as something to be **verified, not
-assumed**:
+This project ensures that every answer is **verified before reaching the user**:
 
-1. The corpus is ingested at **clause granularity** (not page or paragraph), so every
-   retrievable unit maps to a citable clause number.
-2. The generator is never allowed to return prose — it returns a **list of discrete,
-   independently-checkable claims**, each with a citation and a verbatim quote, or an
-   explicit "unsupported" marker when nothing in the corpus backs it.
-3. A first LLM judge **re-checks every claim against the real clause text**
-   (independently of the generator's own reasoning) and labels it supported,
-   contradicted, or unsupported.
-4. A second LLM judge takes anything that isn't cleanly "supported" and packages it into
-   a ranked review item for a **human-in-the-loop (HITL)** reviewer, who can approve,
-   edit, or reject it.
-5. Only claims that pass the judge — or pass a human after review — ever reach the
-   end user.
+1. Standards are stored at the **clause level** for accurate citations.
+2. The system generates separate claims with citations and quotes, or marks them as **unsupported**.
+3. An LLM judge checks each claim against the original clause.
+4. Unclear or incorrect claims are sent for **human review**.
+5. Only verified claims are shown to the user.
 
-Full architecture and the phase-by-phase build plan are in
-[`artifacts/system-arch-and-roadmap.md`](artifacts/system-arch-and-roadmap.md).
-
+ 
 ## Objective
 
 Build and demonstrate a working system that:
