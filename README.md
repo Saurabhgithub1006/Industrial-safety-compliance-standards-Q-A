@@ -121,18 +121,18 @@ Industrial-safety-compliance-standards-Q-A/
 
 **Status:**
 - Phase 1: Clause-Aware Ingestion
-The system parses 135 OSHA 1910.147 clauses from eCFR XML and stores them in a queryable database. Each clause has a unique citation key, making it easy to retrieve and cite the exact safety requirement.    Pasted text
-Phase 2: Hybrid Retrieval
-The system combines BM25 keyword search with e5-base-v2 embeddings for semantic search. Both results are combined using Reciprocal Rank Fusion (RRF). The system achieved 100% recall@5 (15/15) on the test set.    Pasted text
-Phase 3: Grounded Generation
-The LLM generates answers only from the retrieved clauses. Each claim must include a citation and a verbatim quote. If the available sources do not support a claim, it is marked as unsupported instead of generating a guess. The system also checks that the citation and quote actually match the retrieved clause.    Pasted text
-Phase 4: Grounding and Contradiction Check
-An independent judge checks each generated claim against the original clause. It verifies whether the clause actually supports the claim and identifies incorrect or contradictory statements. Each claim receives one of three verdicts: supported, contradicted, or unsupported.    Pasted text
-Phase 5: Human Review
-Claims that are contradicted or unsupported are sent to a separate review queue. A human reviewer can approve, edit, or reject these claims, with every decision recorded for auditing. Only supported or human-approved claims are included in the final answer.    Pasted text
-Phase 6: Feedback and Regression Testing
-The system records cases where human reviewers disagree with the judge and uses them for regression testing. This helps identify changes in judge performance and prevent previously detected issues from appearing again.    Pasted text
-Phase 7: System Hardening
+The system parses 135 OSHA 1910.147 clauses from eCFR XML and stores them in a queryable database. Each clause has a unique citation key, making it easy to retrieve and cite the exact safety requirement.    
+- Phase 2: Hybrid Retrieval
+The system combines BM25 keyword search with e5-base-v2 embeddings for semantic search. Both results are combined using Reciprocal Rank Fusion (RRF). The system achieved 100% recall@5 (15/15) on the test set.    
+- Phase 3: Grounded Generation
+The LLM generates answers only from the retrieved clauses. Each claim must include a citation and a verbatim quote. If the available sources do not support a claim, it is marked as unsupported instead of generating a guess. The system also checks that the citation and quote actually match the retrieved clause.   
+- Phase 4: Grounding and Contradiction Check
+An independent judge checks each generated claim against the original clause. It verifies whether the clause actually supports the claim and identifies incorrect or contradictory statements. Each claim receives one of three verdicts: supported, contradicted, or unsupported.  
+- Phase 5: Human Review
+Claims that are contradicted or unsupported are sent to a separate review queue. A human reviewer can approve, edit, or reject these claims, with every decision recorded for auditing. Only supported or human-approved claims are included in the final answer.    
+- Phase 6: Feedback and Regression Testing
+The system records cases where human reviewers disagree with the judge and uses them for regression testing. This helps identify changes in judge performance and prevent previously detected issues from appearing again.    
+- Phase 7: System Hardening
 The final phase improved system monitoring and auditing. Judge decisions are logged with the model and prompt version, reviewer identity is required, and an optional review mode allows newly flagged claims to be reviewed before the final answer is returned.
 
 **Post-roadmap optimizations** (2026-09-16) — a targeted review of the finished
