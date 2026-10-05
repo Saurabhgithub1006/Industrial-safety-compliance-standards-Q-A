@@ -135,25 +135,12 @@ The system records cases where human reviewers disagree with the judge and uses 
 - Phase 7: System Hardening
 The final phase improved system monitoring and auditing. Judge decisions are logged with the model and prompt version, reviewer identity is required, and an optional review mode allows newly flagged claims to be reviewed before the final answer is returned.
 
-**Post-roadmap optimizations** (2026-09-16) — a targeted review of the finished
+**Post-roadmap optimizations** : a targeted review of the finished
 system found 3 concrete, worth-fixing gaps rather than a vague "polish" pass:
-1. **Retry/backoff on transient API errors** (`llm_client.py`'s `call_with_retry`)
-   — closes a real gap: an unhandled `RateLimitError` was observed directly during
-   manual testing (Kimi's account tier is capped at 3 requests/minute). Exponential
-   backoff (5s/10s/20s), separate from the existing schema-validation retry, which
-   handles a different failure mode (malformed output, not a failed call).
-2. **Prompt caching on `AnthropicClient`** — an explicit `cache_control` breakpoint
-   on the system prompt, which the architecture doc always called for but the code
-   never implemented. `KimiClient` needed no equivalent change: Moonshot's context
-   caching is fully automatic for repeated prefixes over 256 tokens (confirmed via
-   their docs, not assumed), and the system message already comes first in every
-   request, which is the one thing on our side that actually matters for it to hit.
-3. **Tightened the generator's citation rule** — added after a real live failure
-   this session: asked "what is an energy isolating device?", the generator cited
-   the clause that *defines "lockout"* (which mentions "energy isolating device"
-   while doing so) as if it defined the term asked about. Judge 1 caught it
-   correctly and it never reached the user — but the fix addresses it at the
-   source instead of relying solely on the safety net catching it every time.
+A final review identified three main areas that needed improvement:
+**1. Retry and Backoff**: The system now handles temporary API errors using automatic retries with increasing wait times of 5, 10, and 20 seconds. This helps prevent failures caused by API rate limits.
+**2. Prompt Caching**: Prompt caching was added to the Anthropic client to reduce repeated processing. The Kimi client already supports automatic caching for repeated context.
+**3. Improved Citation Rules**: The citation rules were tightened to prevent the system from using a related clause as the definition of a term. This issue was found during live testing and was successfully caught by the judge.
 
 6 new tests (5 for the retry helper, mocking `time.sleep` so they run instantly;
 1 confirming the new prompt rule is actually sent). Live-validated: a real call
