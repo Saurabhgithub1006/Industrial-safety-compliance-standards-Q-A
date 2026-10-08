@@ -152,21 +152,15 @@ Tightened citation rules to prevent the system from using a related clause as th
 1 confirming the new prompt rule is actually sent). Live-validated: a real call
 through the refactored `KimiClient` still works correctly end to end.
 
-**Web app** (2026-09-28) — a deployed FastAPI + PostgreSQL app, wrapping the same
-pipeline behind HTTP instead of the CLI tools. None of the pipeline logic (Generator,
-GroundingJudge, escalation, assembly) was reimplemented — `backend/` adds a new
-storage layer (SQLAlchemy Core, portable between SQLite for local dev and
-PostgreSQL in production, same code either way) and injects it into
-`GroundingJudge`/`assemble_final_answer` via a small, additive dependency-injection
-parameter each already had room for (`clause_lookup` / `get_item_fn`), keeping every
-existing SQLite-based CLI call site working unchanged. 8 new tests, plus a real,
-live end-to-end round trip through the running app (not just the storage layer in
-isolation): `POST /api/ask "what is a lockout device?"` returned 3 correctly
-grounded claims through the full retrieve → generate → judge → assemble path.
-Containerized (the embedding model is baked into the image at build time, closing
-the same cold-start gap the earlier optimization pass flagged) and configured for
-Fly.io (`fly.toml`) — see [`DEPLOY.md`](DEPLOY.md) for the exact deploy steps
-(the CLI is installed and ready; only the account login and the final `flyctl
-deploy` need your own Fly.io account, which nothing here can do on your behalf).
+## Web Application
 
-Tested throughout: `pytest` (101 tests, all passing, zero requiring live API access).
+A deployed **FastAPI + PostgreSQL** web application was added to expose the same safety QA pipeline through an HTTP API instead of the CLI.
+
+- Reuses the existing **retrieve → generate → judge → assemble** pipeline without duplicating the core logic.
+- Uses **SQLAlchemy Core** for database storage, supporting SQLite for local development and PostgreSQL for production.
+- Added **8 new tests** and completed a live end-to-end test through `POST /api/ask`.
+- The live test successfully returned **3 grounded claims** for the query `"what is a lockout device?"`.
+- The application is **containerized** with the embedding model included in the image and configured for **Fly.io deployment**.
+- **101 automated tests** pass, with no tests requiring live API access.
+
+See [`DEPLOY.md`](DEPLOY.md) for deployment instructions.
