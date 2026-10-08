@@ -135,12 +135,18 @@ The system records cases where human reviewers disagree with the judge and uses 
 - Phase 7: System Hardening
 The final phase improved system monitoring and auditing. Judge decisions are logged with the model and prompt version, reviewer identity is required, and an optional review mode allows newly flagged claims to be reviewed before the final answer is returned.
 
-**Post-roadmap optimizations** : a targeted review of the finished
-system found 3 concrete, worth-fixing gaps rather than a vague "polish" pass:
-A final review identified three main areas that needed improvement:
-**1. Retry and Backoff**: The system now handles temporary API errors using automatic retries with increasing wait times of 5, 10, and 20 seconds. This helps prevent failures caused by API rate limits.
-**2. Prompt Caching**: Prompt caching was added to the Anthropic client to reduce repeated processing. The Kimi client already supports automatic caching for repeated context.
-**3. Improved Citation Rules**: The citation rules were tightened to prevent the system from using a related clause as the definition of a term. This issue was found during live testing and was successfully caught by the judge.
+## Post-Roadmap Optimizations
+
+A targeted review of the completed system identified three concrete areas for improvement:
+
+**1. Retry and Backoff:**  
+Added automatic retries for temporary API errors, with increasing wait times of 5, 10, and 20 seconds. This improves reliability when API rate limits are reached.
+
+**2. Prompt Caching:**  
+Added prompt caching to the Anthropic client to reduce repeated processing. The Kimi client already supports automatic caching for repeated context.
+
+**3. Improved Citation Rules:**  
+Tightened citation rules to prevent the system from using a related clause as the definition of a term. This issue was identified during live testing and successfully caught by the judge.
 
 6 new tests (5 for the retry helper, mocking `time.sleep` so they run instantly;
 1 confirming the new prompt rule is actually sent). Live-validated: a real call
