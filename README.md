@@ -1,3 +1,13 @@
+---
+title: Industrial Safety Compliance Standards Q&A
+emoji: 🦺
+colorFrom: blue
+colorTo: gray
+sdk: docker
+app_port: 8080
+pinned: false
+---
+
 # Industrial Safety Compliance Standards Q&A
 
 A citation-based RAG system for functional and machine safety standards in industrial automation (IEC/ISO/DIN-class standards such as IEC 61508, IEC 62061,
