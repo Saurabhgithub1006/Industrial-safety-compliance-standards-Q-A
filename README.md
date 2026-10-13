@@ -76,15 +76,4 @@ Tightened citation rules to prevent the system from using a related clause as th
 1 confirming the new prompt rule is actually sent). Live-validated: a real call
 through the refactored `KimiClient` still works correctly end to end.
 
-## Web Application
 
-A deployed **FastAPI + PostgreSQL** web application was added to expose the same safety QA pipeline through an HTTP API instead of the CLI.
-
-- Reuses the existing **retrieve → generate → judge → assemble** pipeline without duplicating the core logic.
-- Uses **SQLAlchemy Core** for database storage, supporting SQLite for local development and PostgreSQL for production.
-- Added **8 new tests** and completed a live end-to-end test through `POST /api/ask`.
-- The live test successfully returned **3 grounded claims** for the query `"what is a lockout device?"`.
-- The application is **containerized** with the embedding model included in the image and configured for **Fly.io deployment**.
-- **101 automated tests** pass, with no tests requiring live API access.
-
-See [`DEPLOY.md`](DEPLOY.md) for deployment instructions.
